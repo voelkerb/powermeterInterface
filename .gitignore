@@ -1,0 +1,21 @@
+**/.vscode/
+
+**/*.mkv
+
+**/tmp_*
+
+**/*.cpp.o
+
+**/.vscode*
+
+**/.DS_Store
+
+# Eagle temporary board and schematic file
+**/*.b#*
+**/*.s#*
+
+
+Firmware/Analog Devices API/
+Firmware/Analog Devices API/*
+
+
