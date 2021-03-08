@@ -2,27 +2,39 @@
 import os
 import sys
 import time
-# Import top level module
-try:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-except NameError:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
-sys.path.append(root)
 
 import argparse
 import signal
 import struct
-from terminal import printYellow, printPink, printBlue, printRed
-from powermeter.powerMeter import PowerMeter
-from powermeter.smartMeter import SmartMeter
-from powermeter.smartDevice import SmartDevice
+from .powerMeter import PowerMeter
+from .smartMeter import SmartMeter
+from .smartDevice import SmartDevice
 import os
 import threading
 import signal
 import re
-from network.mDNS import mDNS
+# Import top level
+from pathlib import Path
+sys.path.append(str(Path('.').absolute().parent))
+from network.network.mDNS import mDNS
 
 possibleTypes = [PowerMeter.TYPE, SmartMeter.TYPE, SmartDevice.TYPE]
+
+def printRed(string, end="\n"):
+    if not isinstance(string, str): string = str(string)
+    print('\033[91m' + string + '\033[0m', end=end)
+
+def printYellow(string, end="\n"):
+    if not isinstance(string, str):string = str(string)
+    print('\033[93m' + string + '\033[0m', end=end)
+
+def printBlue(string, end="\n"):
+    if not isinstance(string, str): string = str(string)
+    print('\033[94m' + string + '\033[0m', end=end)
+
+def printPink(string, end="\n"):
+    if not isinstance(string, str): string = str(string)
+    print('\033[95m' + string + '\033[0m', end=end)
 
 def atoi(text):
     return int(text) if text.isdigit() else text

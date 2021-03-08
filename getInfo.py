@@ -1,19 +1,10 @@
-
 import os
 import sys
 import time
 import re
-# Import top level module
-try:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-except NameError:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
-sys.path.append(root)
-
 import argparse
-from network.mDNS import mDNS, Basher
+import powermeter
 from powermeter.powerMeter import PowerMeter
-from terminal import printBlue, printYellow
 # from powermeter.getDevices import *
 import powermeter.getDevices as devGetter
 import signal
@@ -57,7 +48,7 @@ if __name__ == '__main__':
         global seenDevices
         seenDevices += 1
         print("\n")
-        printYellow(device.name + ":")
+        print(device.name + ":")
         for key in dic:
             print("{0:<15}".format(str(" " + key + ": ")[:15]) + str(dic[key]))
         print("\n")

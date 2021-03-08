@@ -2,19 +2,10 @@
 import os
 import sys
 import time
-import re
-# Import top level module
-try:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-except NameError:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
-sys.path.append(root)
-
 # this is required for arduino plugin since it seems to be not included if not called from bash
 sys.path.append('/usr/local/lib/python3.7/site-packages')
 import argparse
-from network.mDNS import mDNS, Basher
-from terminal import printBlue, printYellow
+from network.network.mDNS import mDNS, Basher
 import signal
 from powermeter.powerMeter import PowerMeter
 import powermeter.ota.modifiedOTA as ota
@@ -26,6 +17,14 @@ import cursor
 import multiprocessing
 import powermeter.getDevices as devGetter
         
+def printYellow(string, end="\n"):
+    if not isinstance(string, str):string = str(string)
+    print('\033[93m' + string + '\033[0m', end=end)
+
+def printBlue(string, end="\n"):
+    if not isinstance(string, str): string = str(string)
+    print('\033[94m' + string + '\033[0m', end=end)
+
 class Writer(object):
     """Create an object with a write method that writes to a
     specific place on the screen, defined at instantiation.

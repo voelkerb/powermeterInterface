@@ -2,19 +2,11 @@
 # !/usr/bin/python
 import sys
 import os
-# Import top level module
-try:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-except NameError:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
-sys.path.append(root)
-
 import time
 import traceback
 import threading
 # We need to add the path
-from powermeter.smartDevice import SmartDevice, LogLevel
-import measurement.valuesAndUnits as vu
+from smartDevice import *
 import json
 
 
@@ -25,10 +17,10 @@ class PowerMeter(SmartDevice):
     TYPE = "PowerMeter".lower()
     DEFAULT_SR = 4000
     AVAILABLE_MEASURES = [
-                {"keys": [vu.VOLTAGE[0], vu.CURRENT[0]],                                           "bytes": 8,  "cmdMeasure": "v,i"    },
-                {"keys": [vu.ACTIVE_POWER[0], vu.REACTIVE_POWER[0]],                               "bytes": 8,  "cmdMeasure": "p,q"    },
-                {"keys": [vu.VOLTAGE[0], vu.CURRENT[0], vu.ACTIVE_POWER[0], vu.REACTIVE_POWER[0]], "bytes": 16, "cmdMeasure": "v,i,p,q"},
-                {"keys": [vu.VOLTAGE_RMS[0], vu.CURRENT_RMS[0]],                                   "bytes": 8,  "cmdMeasure": "v,i_RMS"},
+                {"keys": [VOLTAGE[0], CURRENT[0]],                                           "bytes": 8,  "cmdMeasure": "v,i"    },
+                {"keys": [ACTIVE_POWER[0], REACTIVE_POWER[0]],                               "bytes": 8,  "cmdMeasure": "p,q"    },
+                {"keys": [VOLTAGE[0], CURRENT[0], ACTIVE_POWER[0], REACTIVE_POWER[0]], "bytes": 16, "cmdMeasure": "v,i,p,q"},
+                {"keys": [VOLTAGE_RMS[0], CURRENT_RMS[0]],                                   "bytes": 8,  "cmdMeasure": "v,i_RMS"},
             ]
 
     # Init function with default values
@@ -110,7 +102,7 @@ class PowerMeter(SmartDevice):
         :param parameter: dictionary with calibration parameter as \{'v':0.99,'i':1.01 \}
         :type  parameter: dict
         """
-        if vu.VOLTAGE[0] in parameter and vu.CURRENT[0] in parameter:
+        if VOLTAGE[0] in parameter and CURRENT[0] in parameter:
             calDict = {"cmd":"calibration","calV":parameter["v"],"calI":parameter["i"]}
             self.sendFunc(json.dumps(calDict)) 
         else:
@@ -187,10 +179,10 @@ if __name__ == '__main__':
             rightAxisPlot.linkedViewChanged(leftAxisPlot.getViewBox(), rightAxisPlot.XAxis)
 
     # Mapping holds plots and data
-    mapping = {vu.ACTIVE_POWER[0]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.REACTIVE_POWER[0]: {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.VOLTAGE[0]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.CURRENT[0]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},}
+    mapping = {ACTIVE_POWER[0]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               REACTIVE_POWER[0]: {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               VOLTAGE[0]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               CURRENT[0]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},}
 
     # Init plot depending on selected measures
     def initPlot():
@@ -203,28 +195,28 @@ if __name__ == '__main__':
             if key in ms.MEASUREMENTS: mapping[key]["active"] = True
 
         # add new plot for power (same axis scale)
-        if vu.ACTIVE_POWER[0] in ms.MEASUREMENTS or vu.REACTIVE_POWER[0] in ms.MEASUREMENTS:
+        if ACTIVE_POWER[0] in ms.MEASUREMENTS or REACTIVE_POWER[0] in ms.MEASUREMENTS:
             p_c_0 = win.addPlot()
             p_c_0.getViewBox().setMouseEnabled(x=False, y=False)
             p_c_0.setLabel('left', "Power [W]")
             p_c_0.setLabel('right', "Power [VAR]")
-            mapping[vu.ACTIVE_POWER[0]]["plot"] = p_c_0
-            mapping[vu.REACTIVE_POWER[0]]["plot"] = p_c_0
+            mapping[ACTIVE_POWER[0]]["plot"] = p_c_0
+            mapping[REACTIVE_POWER[0]]["plot"] = p_c_0
             win.nextRow()
 
         # add plot for current and voltage different axis
-        if vu.VOLTAGE[0] in ms.MEASUREMENTS or vu.CURRENT[0] in ms.MEASUREMENTS:
+        if VOLTAGE[0] in ms.MEASUREMENTS or CURRENT[0] in ms.MEASUREMENTS:
             p_c_1 = win.addPlot()
             p_c_1.getViewBox().setMouseEnabled(x=False, y=False)
             p_c_1.setLabel('left', "Voltage [V]")
             p_c_1.setLabel('right', "Current [mA]")
-            mapping[vu.VOLTAGE[0]]["plot"] = p_c_1
+            mapping[VOLTAGE[0]]["plot"] = p_c_1
 
             p_c_2 = pg.ViewBox()
             p_c_1.scene().addItem(p_c_2)
             p_c_1.getAxis('right').linkToView(p_c_2)
             p_c_2.setXLink(p_c_1)
-            mapping[vu.CURRENT[0]]["plot"] = p_c_2
+            mapping[CURRENT[0]]["plot"] = p_c_2
             linkedPlots.append((p_c_1, p_c_2))
 
         updateViews()

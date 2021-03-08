@@ -2,18 +2,11 @@
 # !/usr/bin/python
 import sys
 import os
-# Import top level module
-try:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-except NameError:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
-sys.path.append(root)
 
 import serial
 import socket
 import struct
 import warnings
-import settings
 import time
 import traceback
 import json
@@ -24,11 +17,9 @@ import multiprocessing
 from multiprocessing import Process, Value
 import platform
 # We need to add the path
-import measurement.valuesAndUnits as vu
-from measurement import MeasurementSystem
 from queue import Queue, Empty
 import json
-from powermeter.smartDevice import SmartDevice, LogLevel
+from smartDevice import *
 
 
 
@@ -40,12 +31,12 @@ class SmartMeter(SmartDevice):
     DEFAULT_SR = 8000
 
     AVAILABLE_MEASURES = [
-            {"keys": [vu.VOLTAGE[1], vu.CURRENT[1], vu.VOLTAGE[2], vu.CURRENT[2], vu.VOLTAGE[3], vu.CURRENT[3]], "bytes": 24, "cmdMeasure": None},
-            {"keys": [vu.VOLTAGE[0], vu.CURRENT[0]], "bytes": 8, "cmdMeasure": "v,i_L1"},
-            {"keys": [vu.VOLTAGE[0], vu.CURRENT[0]], "bytes": 8, "cmdMeasure": "v,i_L2"},
-            {"keys": [vu.VOLTAGE[0], vu.CURRENT[0]], "bytes": 8, "cmdMeasure": "v,i_L3"},
-            {"keys": [vu.VOLTAGE_RMS[1], vu.VOLTAGE_RMS[2], vu.VOLTAGE_RMS[3], vu.CURRENT_RMS[1], vu.CURRENT_RMS[2], vu.CURRENT_RMS[3]], "bytes": 24, "cmdMeasure": "v,i_RMS"},
-            {"keys": [vu.ACTIVE_POWER[1], vu.ACTIVE_POWER[2], vu.ACTIVE_POWER[3], vu.REACTIVE_POWER[1], vu.REACTIVE_POWER[2], vu.REACTIVE_POWER[3]], "bytes": 8, "cmdMeasure": "p,q"},
+            {"keys": [VOLTAGE[1], CURRENT[1], VOLTAGE[2], CURRENT[2], VOLTAGE[3], CURRENT[3]], "bytes": 24, "cmdMeasure": None},
+            {"keys": [VOLTAGE[0], CURRENT[0]], "bytes": 8, "cmdMeasure": "v,i_L1"},
+            {"keys": [VOLTAGE[0], CURRENT[0]], "bytes": 8, "cmdMeasure": "v,i_L2"},
+            {"keys": [VOLTAGE[0], CURRENT[0]], "bytes": 8, "cmdMeasure": "v,i_L3"},
+            {"keys": [VOLTAGE_RMS[1], VOLTAGE_RMS[2], VOLTAGE_RMS[3], CURRENT_RMS[1], CURRENT_RMS[2], CURRENT_RMS[3]], "bytes": 24, "cmdMeasure": "v,i_RMS"},
+            {"keys": [ACTIVE_POWER[1], ACTIVE_POWER[2], ACTIVE_POWER[3], REACTIVE_POWER[1], REACTIVE_POWER[2], REACTIVE_POWER[3]], "bytes": 8, "cmdMeasure": "p,q"},
         ]
 
 
@@ -124,9 +115,9 @@ class SmartMeter(SmartDevice):
         :param parameter: dictionary with calibration parameter as \{'v_l1':0.99,'i_l1':1.01 ... \}
         :type  parameter: dict
         """
-        if all([vi in parameter for vi in vu.VOLTAGE[1:]+vu.CURRENT[1:]]):
+        if all([vi in parameter for vi in VOLTAGE[1:]+CURRENT[1:]]):
             calDict = {"cmd":"calibration","values":[]}
-            for key in [vu.VOLTAGE[1], vu.CURRENT[1], vu.VOLTAGE[2], vu.CURRENT[2], vu.VOLTAGE[3], vu.CURRENT[3]]: calDict["values"] = parameter[key]
+            for key in [VOLTAGE[1], CURRENT[1], VOLTAGE[2], CURRENT[2], VOLTAGE[3], CURRENT[3]]: calDict["values"] = parameter[key]
             self.sendFunc(json.dumps(calDict)) 
         else:
             self.msPrint("Cannot use given parameters to calibrate")
@@ -266,30 +257,30 @@ if __name__ == '__main__':
             rightAxisPlot.linkedViewChanged(leftAxisPlot.getViewBox(), rightAxisPlot.XAxis)
 
     # Mapping holds plots and data
-    mapping = {vu.VOLTAGE[0]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.VOLTAGE[1]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.VOLTAGE[2]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.VOLTAGE[3]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.CURRENT[0]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.CURRENT[1]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.CURRENT[2]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.CURRENT[3]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.VOLTAGE_RMS[0]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.VOLTAGE_RMS[1]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.VOLTAGE_RMS[2]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.VOLTAGE_RMS[3]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.CURRENT_RMS[0]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.CURRENT_RMS[1]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.CURRENT_RMS[2]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.CURRENT_RMS[3]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.ACTIVE_POWER[0]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.ACTIVE_POWER[1]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.ACTIVE_POWER[2]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.ACTIVE_POWER[3]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               vu.REACTIVE_POWER[0]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.REACTIVE_POWER[1]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.REACTIVE_POWER[2]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               vu.REACTIVE_POWER[3]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},}
+    mapping = {VOLTAGE[0]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               VOLTAGE[1]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               VOLTAGE[2]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               VOLTAGE[3]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               CURRENT[0]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               CURRENT[1]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               CURRENT[2]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               CURRENT[3]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               VOLTAGE_RMS[0]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               VOLTAGE_RMS[1]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               VOLTAGE_RMS[2]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               VOLTAGE_RMS[3]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               CURRENT_RMS[0]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               CURRENT_RMS[1]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               CURRENT_RMS[2]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               CURRENT_RMS[3]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               ACTIVE_POWER[0]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               ACTIVE_POWER[1]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               ACTIVE_POWER[2]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               ACTIVE_POWER[3]:  {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+               REACTIVE_POWER[0]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               REACTIVE_POWER[1]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               REACTIVE_POWER[2]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+               REACTIVE_POWER[3]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},}
 
     # Init plot depending on selected measures
     def initPlot():
@@ -302,44 +293,44 @@ if __name__ == '__main__':
             if key in ms.MEASUREMENTS: mapping[key]["active"] = True
 
         for c in [0,1,2,3]:
-            if not (mapping[vu.ACTIVE_POWER[c]]["active"] or mapping[vu.REACTIVE_POWER[c]]["active"]): continue
+            if not (mapping[ACTIVE_POWER[c]]["active"] or mapping[REACTIVE_POWER[c]]["active"]): continue
             p_c_0 = win.addPlot()
             p_c_0.getViewBox().setMouseEnabled(x=False, y=False)
             p_c_0.setLabel('left', "Power [W]")
             p_c_0.setLabel('right', "Power [VAR]")
-            mapping[vu.ACTIVE_POWER[c]]["plot"] = p_c_0
-            mapping[vu.REACTIVE_POWER[c]]["plot"] = p_c_0
+            mapping[ACTIVE_POWER[c]]["plot"] = p_c_0
+            mapping[REACTIVE_POWER[c]]["plot"] = p_c_0
             win.nextRow()
 
         for c in [0,1,2,3]:
-            if not (mapping[vu.VOLTAGE[c]]["active"] or mapping[vu.CURRENT[c]]["active"]): continue
+            if not (mapping[VOLTAGE[c]]["active"] or mapping[CURRENT[c]]["active"]): continue
             p_c_1 = win.addPlot()
             p_c_1.getViewBox().setMouseEnabled(x=False, y=False)
             p_c_1.setLabel('left', "Voltage [V]")
             p_c_1.setLabel('right', "Current [mA]")
-            mapping[vu.VOLTAGE[c]]["plot"] = p_c_1
+            mapping[VOLTAGE[c]]["plot"] = p_c_1
 
             p_c_2 = pg.ViewBox()
             p_c_1.scene().addItem(p_c_2)
             p_c_1.getAxis('right').linkToView(p_c_2)
             p_c_2.setXLink(p_c_1)
-            mapping[vu.CURRENT[c]]["plot"] = p_c_2
+            mapping[CURRENT[c]]["plot"] = p_c_2
             linkedPlots.append((p_c_1, p_c_2))
             win.nextRow()
 
         for c in [0,1,2,3]:
-            if not (mapping[vu.VOLTAGE_RMS[c]]["active"] or mapping[vu.CURRENT_RMS[c]]["active"]): continue
+            if not (mapping[VOLTAGE_RMS[c]]["active"] or mapping[CURRENT_RMS[c]]["active"]): continue
             p_c_1 = win.addPlot()
             p_c_1.getViewBox().setMouseEnabled(x=False, y=False)
             p_c_1.setLabel('left', "RMS Voltage [V]")
             p_c_1.setLabel('right', "RMS Current [mA]")
-            mapping[vu.VOLTAGE_RMS[c]]["plot"] = p_c_1
+            mapping[VOLTAGE_RMS[c]]["plot"] = p_c_1
 
             p_c_2 = pg.ViewBox()
             p_c_1.scene().addItem(p_c_2)
             p_c_1.getAxis('right').linkToView(p_c_2)
             p_c_2.setXLink(p_c_1)
-            mapping[vu.CURRENT_RMS[c]]["plot"] = p_c_2
+            mapping[CURRENT_RMS[c]]["plot"] = p_c_2
             linkedPlots.append((p_c_1, p_c_2))
             win.nextRow()
 

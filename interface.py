@@ -1,28 +1,34 @@
-
 import os
 import sys
 import time
 import re
-# Import top level module
-try:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-except NameError:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
-sys.path.append(root)
-
 import argparse
-from network.mDNS import mDNS, Basher
 from powermeter.powerMeter import PowerMeter
 from powermeter.smartMeter import SmartMeter
 from powermeter.smartDevice import LogLevel
-from terminal import printBlue, printRed, printPink
-import measurement.valuesAndUnits as vu
 import threading
 # from powermeter.getDevices import *
 import powermeter.getDevices as devGetter
 import signal
 
 running = True
+
+
+def printRed(string, end="\n"):
+    if not isinstance(string, str): string = str(string)
+    print('\033[91m' + string + '\033[0m', end=end)
+
+def printYellow(string, end="\n"):
+    if not isinstance(string, str):string = str(string)
+    print('\033[93m' + string + '\033[0m', end=end)
+
+def printBlue(string, end="\n"):
+    if not isinstance(string, str): string = str(string)
+    print('\033[94m' + string + '\033[0m', end=end)
+
+def printPink(string, end="\n"):
+    if not isinstance(string, str): string = str(string)
+    print('\033[95m' + string + '\033[0m', end=end)
 
 def helpme():
     for cmd in cmds:
