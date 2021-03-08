@@ -73,6 +73,33 @@ powermeter15:
  rssi:         -78
  bssid:        <XXXXXXXXX>
 ```
+## Plotting Data
+Plotting live high frequency data from a PowerMeter: 
+```bash
+python3 powermeter/powermeter.py --host <powermeter_mDNS_name or IP> --samplingrate <sr> --plot --measures <measures>
+```
+* ```<powermeter_mDNS_name or IP>```: is either the powermeters IP address or the mDNS name. You can get the name using ```python3 getInfo``` 
+* ```<sr>```: Samplingrate as interger. Value between 1 and 8000, default: 4000
+* ```measures>```: either "v,i", "p,q", "v,i,p,q" or "v_RMS,i_RMS", default: "v,i"
+Example output for: 
+```bash
+python3 powermeter/powermeter.py --host powermeter20.local --samplingrate 2000 --plot --measures "v,i,p,q"
+```
+  <img src="/docu/figures/powerMeterPlot2.jpg">
+
+Plotting live high frequency data from a SmartMeter: 
+```bash
+python3 powermeter/smartmeter.py --host <smartmeter_mDNS_name or IP> --samplingrate <sr> --plot --measures <measures> --phase <phase>
+```
+* ```<powermeter_mDNS_name or IP>```: is either the powermeters IP address or the mDNS name. You can get the name using ```python3 getInfo``` 
+* ```<sr>```: Samplingrate as interger. Value between 1 and 32000, default: 8000
+* ```measures>```: either "v_l1,i_l1,v_l2,i_l2,v_l3,i_l3", "v,i", "v_rms_l1,v_rms_l2,v_rms_l3,i_rms_l1,i_rms_l2,i_rms_l3" or "p_l1,p_l2,p_l3,q_l1,q_l2,q_l3", default: "v_l1,i_l1,v_l2,i_l2,v_l3,i_l3"
+* ```phase```: either 1,2,3 or None, default: None (all phases)
+Example output for: 
+```bash
+python3 powermeter/smartmeter.py --host smartmeter001.local --samplingrate 2000 --plot
+```
+  <img src="/docu/figures/smartMeterPlot.jpg">
 
 
 ## Change settings
