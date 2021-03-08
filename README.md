@@ -146,9 +146,9 @@ powermeter20:
 
 ## Updating the firmware
 
-  <img src="https://github.com/voelkerb/powermeter/docu/figures/upload.gif">
+  <img src="https://github.com/voelkerb/powermeter/blob/master/docu/figures/upload.gif">
 
-* Compile the firmware see [instructions](https://github.com/voelkerb/powermeter/docu/README_Firmware_2_compile.md) for [powermeter](https://github.com/voelkerb/powermeter) or [instructions](https://github.com/voelkerb/smartmeter/docu/README_Firmware_2_compile.md) for [smartmeter](https://github.com/voelkerb/smartmeter) or 
+* Compile the firmware see [instructions](https://github.com/voelkerb/powermeter/blob/master/docu/README_Firmware_2_compile.md) for [powermeter](https://github.com/voelkerb/powermeter) or [instructions](https://github.com/voelkerb/smartmeter/blob/master/docu/README_Firmware_2_compile.md) for [smartmeter](https://github.com/voelkerb/smartmeter) or 
 * Copy the path of the compiled binary _elf_ or _bin_ (the _bin_ will be used either way)
 * Use the upload script
   ```bash
