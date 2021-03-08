@@ -73,7 +73,8 @@ powermeter15:
  rssi:         -78
  bssid:        <XXXXXXXXX>
 ```
-## Plotting Data
+
+## Plotting data
 Plotting live high frequency data from a PowerMeter: 
 ```bash
 python3 powermeter/powermeter.py --host <powermeter_mDNS_name or IP> --samplingrate <sr> --plot --measures <measures>
@@ -100,6 +101,31 @@ Example output for:
 python3 powermeter/smartmeter.py --host smartmeter001.local --samplingrate 2000 --plot
 ```
   <img src="/docu/figures/smartMeterPlot.jpg">
+
+
+## Storing data
+You want to store the data as ```wavPack``` encoded audio data inside a ```mkv``` container?
+Use the same commands as for plotting and append the options ```--ffmpeg``` and ```--filename <FILENAME>```. E.g.:
+```bash
+python3 powermeter/smartmeter.py --host smartmeter001.local --samplingrate 2000 --ffmpeg --filename test.mkv
+```
+Stop the recording using ```ctr-c```.
+
+```
+$:powermeterInterface voelkerb$ ffprobe test.mkv 
+Input #0, matroska,webm, from 'test.mkv':
+  Metadata:
+    ENCODER         : Lavf58.45.100
+  Duration: 00:00:06.68, start: 0.000000, bitrate: 292 kb/s
+    Stream #0:0: Audio: wavpack, 2000 Hz, 6 channels, fltp (default)
+    Metadata:
+      title           : SmartDevice
+      CHANNELS        : 6
+      CHANNEL_TAGS    : v_l1,i_l1,v_l2,i_l2,v_l3,i_l3
+      ENCODER         : Lavc58.91.100 wavpack
+      DURATION        : 00:00:06.683000000
+```
+
 
 
 ## Change settings
