@@ -92,7 +92,7 @@ Plotting live high frequency data from a SmartMeter:
 ```bash
 python3 powermeter/smartmeter.py --host <smartmeter_mDNS_name or IP> --samplingrate <sr> --plot --measures <measures> --phase <phase>
 ```
-* ```<powermeter_mDNS_name or IP>```: is either the powermeters IP address or the mDNS name. You can get the name using ```python3 getInfo``` 
+* ```<powermeter_mDNS_name or IP>```: is either the powermeters IP address or the mDNS name. You can get the name using ```python3 getInfo```. Instead, you can also connect it over USB. See ```python3 powermeter/smartmeter.py -h``` for more info. 
 * ```<sr>```: Samplingrate as interger. Value between 1 and 32000, default: 8000
 * ```measures>```: either "v_l1,i_l1,v_l2,i_l2,v_l3,i_l3", "v,i", "v_rms_l1,v_rms_l2,v_rms_l3,i_rms_l1,i_rms_l2,i_rms_l3" or "p_l1,p_l2,p_l3,q_l1,q_l2,q_l3", default: "v_l1,i_l1,v_l2,i_l2,v_l3,i_l3"
 * ```phase```: either 1,2,3 or None, default: None (all phases)
@@ -125,7 +125,6 @@ Input #0, matroska,webm, from 'test.mkv':
       ENCODER         : Lavc58.91.100 wavpack
       DURATION        : 00:00:06.683000000
 ```
-
 
 
 ## Change settings
@@ -209,8 +208,7 @@ powermeter20:
   ```
     The script will only show you devices which are compatible with your firmware file.
     Select one or multiple powermeter or smartmeter from the list and confirm twice. 
-  ```
-  Press enter and watch the magic
+    Press enter and watch the magic
 
 
 # Reference
