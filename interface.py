@@ -5,7 +5,7 @@ import re
 import argparse
 from powermeter.powerMeter import PowerMeter
 from powermeter.smartMeter import SmartMeter
-from powermeter.smartDevice import LogLevel
+from powermeter.smartDevice import LogLevel, VOLTAGE, CURRENT
 import threading
 # from powermeter.getDevices import *
 import powermeter.getDevices as devGetter
@@ -120,9 +120,9 @@ def calibrate():
     for ms in mss:
         calibration = {}
         if ms.TYPE == SmartMeter.TYPE:
-            for c in vu.VOLTAGE[1:]+vu.CURRENT[1:]: calibration[c] = 1.0
+            for c in VOLTAGE[1:]+CURRENT[1:]: calibration[c] = 1.0
         elif ms.TYPE == PowerMeter.TYPE:
-            for c in vu.VOLTAGE[0]+vu.CURRENT[0]: calibration[c] = 1.0
+            for c in VOLTAGE[0]+CURRENT[0]: calibration[c] = 1.0
         printPink(ms.name + ":")
         printBlue("Required coefficients - " + str(list(calibration.keys())))
         for c in calibration.keys():

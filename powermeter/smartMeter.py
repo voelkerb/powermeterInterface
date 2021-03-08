@@ -19,7 +19,13 @@ import platform
 # We need to add the path
 from queue import Queue, Empty
 import json
-from smartDevice import *
+# Import top level module
+try:
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+except NameError:
+    root = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
+sys.path.append(root)
+from powermeter.smartDevice import *
 
 
 

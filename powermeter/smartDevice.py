@@ -305,6 +305,7 @@ class SmartDevice(metaclass=ABCMeta):
         # Private members required
         self._sendFunc = None
         self._sysInfoCB = None
+        self._logInfoCB = None
         self._lastDeadConnectionInfo = time.time()+10
         self._lastDeadConnectionCB = time.time()+10
 
@@ -589,7 +590,7 @@ class SmartDevice(metaclass=ABCMeta):
         if not self.inited: self._notInitedError
         self.sendFunc("{\"cmd\":\"clearLog\"}")
 
-    def getLog(self, sysInfoCB=None):
+    def getLog(self, logInfoCB=None):
         r"""
         Get log (file) from the measurement module.
         
@@ -597,7 +598,7 @@ class SmartDevice(metaclass=ABCMeta):
         :type  sysInfoCB: function(SmartDevice, dict), default: None
         """
         if not self.inited: self._notInitedError
-        self._sysInfoCB = sysInfoCB
+        self._logInfoCB = logInfoCB
         self.sendFunc("{\"cmd\":\"getLog\"}")
 
     def getType(self, sysInfoCB=None):
@@ -1726,7 +1727,7 @@ class SmartDevice(metaclass=ABCMeta):
             if self._sysInfoCB is not None: self._sysInfoCB(self, di)
         # Result of log cmd
         elif cmd == "log":
-            if self._sysInfoCB is not None: self._sysInfoCB(self, di["msg"].replace("//n", "\n").split("\n"))
+            if self._logInfoCB is not None: self._logInfoCB(self, di["msg"].replace("//n", "\n").split("\n"))
 
     def _handleJson(self, di):
         """

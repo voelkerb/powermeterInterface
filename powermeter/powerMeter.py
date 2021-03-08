@@ -5,8 +5,14 @@ import os
 import time
 import traceback
 import threading
+# Import top level module
+try:
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+except NameError:
+    root = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
+sys.path.append(root)
 # We need to add the path
-from smartDevice import *
+from powermeter.smartDevice import *
 import json
 
 
