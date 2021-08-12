@@ -232,6 +232,47 @@ def log():
     if delete == "yes" or delete == "Yes": 
         for ms in mss: ms.clearLog()
 
+def getInputInteger(lowerBound=None, upperBound=None):
+    c = input()
+    index = -1
+    while c:
+        try:
+            index = int(c)
+            logLevel = list(LogLevel)[index]
+            break   
+        except ValueError:
+            printRed("Type in valid integer")
+            c=input()
+            continue
+        else:
+            valid = True
+            if lowerBound is not None and index < lowerBound: 
+                printRed("integer must be > " + str(lowerBound))
+                valid = False
+            if upperBound is not None and index > upperBound: 
+                printRed("integer must be < " + str(upperBound))
+                valid = False
+            if valid: break
+    return index
+
+def dailyReset():
+    printBlue("Type the hour of day the reset should happen (24h format and -1 to disable)")
+    hour = getInputInteger(-1, 23)
+    printBlue("Type the minute of day the hour (-1 to disable)")
+    minute = getInputInteger(-1, 60)
+    for ms in mss: ms.setDailyReset(hour, minute)
+
+def resetEnergy():
+    printBlue("Are you sure you want to reset the Energy (yes/no)")
+    yes = input()
+    if yes.lower() == "yes": 
+        for ms in mss: ms.resetEnergy()
+
+def lora():
+    printBlue("Type command to send to LoRa Device")
+    cmd = input()
+    for ms in mss: ms.loRaCommand(cmd)
+
 def verbosi():
     printBlue("Changing verbosity")
     for ms in mss: ms.INFO_VERBOSE = not ms.INFO_VERBOSE
@@ -258,6 +299,9 @@ cmds = [
         {"func":log,          "cmd":["log", "l"],              "info":"Display and delete Log messages."},
         {"func":logLevel,     "cmd":["logLevel", "ll"],        "info":"Change device log level."},
         {"func":calibrate,    "cmd":["calibrate", "cal"],      "info":"Set calibration coefficients."},
+        {"func":dailyReset,   "cmd":["dailyRestart", "dr"],    "info":"Set daily restart time."},
+        {"func":resetEnergy,  "cmd":["resetEnergy", "e"],      "info":"Reset accumulated energy (kWh)"},
+        {"func":lora,         "cmd":["lora", "LoRaWAN"],       "info":"Communicate with LoRaWAN module."},
         {"func":verbosi,      "cmd":["verbose", "v"],          "info":"Change verbose output."}
     ]
 

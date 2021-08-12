@@ -651,7 +651,38 @@ class SmartDevice(metaclass=ABCMeta):
         """
         if not self.inited: self._notInitedError
         self.sendFunc(str("{\"cmd\":\"timeServer\", \"payload\":{\"server\":\"" + server + "\"}}"))
+    
+    def setDailyReset(self, hour, minute):
+        """
+        Set dely reset for the device.
+        
+        :param hour:   hour of day
+        :type  hour:   int
+        :param minute: minute of hour
+        :type  minute: int
+        """
+        if not self.inited: self._notInitedError
+        self.sendFunc(str("{\"cmd\":\"dailyRestart\",\"hour\":" + str(hour) + ",\"minute\":" + str(minute) + "}"))
+    
+    def loRaCommand(self, command):
+        """
+        Set dely reset for the device.
+        
+        :param command:   LoRaWAN AT Command
+        :type  command:   str
+        """
+        if not self.inited: self._notInitedError
+        self.sendFunc(str("{\"cmd\":\"lora\",\"msg\":\"" + command + "\"}"))
 
+    def resetEnergy(self):
+        """
+        Set dely reset for the device.
+        
+        :param command:   LoRaWAN AT Command
+        :type  command:   str
+        """
+        if not self.inited: self._notInitedError
+        self.sendFunc(str("{\"cmd\":\"resetEnergy\"}"))
 
     def samplingInfo(self):
         """
