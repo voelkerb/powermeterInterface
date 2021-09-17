@@ -16,6 +16,43 @@ from powermeter.smartDevice import *
 import json
 
 
+class RGBColor():
+    """
+    RGB Color class.
+    """
+
+    def __init__(self,r=10,g=10,b=10):
+        self.red = r
+        self.green = g
+        self.blue = b
+    
+    def red(self):
+        self.red = 255
+        self.green = 0
+        self.blue = 0
+
+    def green(self):
+        self.green = 255
+        self.red = 0
+        self.blue = 0
+
+    def red(self):
+        self.blue = 255
+        self.green = 0
+        self.red = 0
+
+    def toList(self):
+        return [self.red, self.green, self.blue]
+
+    def __str__(self):
+        """
+        Overloaded to String method
+
+        :return: String representation of an RGB color
+        :rtype:  str
+        """
+        return "[{},{},{}]".format(self.red,self.green,self.blue)
+
 
 class PowerMeter(SmartDevice):
     """Class which handles a measurement system."""
@@ -101,6 +138,18 @@ class PowerMeter(SmartDevice):
         msg += "}}"
         self.sendFunc(msg)
 
+    def resetEnergy(self, value=None):
+        """
+        Set dely reset for the device.
+        
+        :param command:   LoRaWAN AT Command
+        :type  command:   str
+        """
+        calDict = {"cmd":"resetEnergy"}
+        if value is not None:
+            calDict["energy"] = value
+        self.sendFunc(json.dumps(calDict)) 
+
     def calibrate(self, parameter):
         r"""
         Set calibration coefficients.
@@ -114,6 +163,63 @@ class PowerMeter(SmartDevice):
         else:
             self.msPrint("Cannot use given parameters to calibrate")
 
+    def hasSensorBoard(self):
+        if self.deviceInfo is not None:
+            if "sensors" in self.deviceInfo and self.deviceInfo["sensors"]: 
+                return True
+        return False
+
+    def getPIR(self):
+        self.sendFunc(json.dumps({"cmd":"getPIR"})) 
+    def getTemp(self):
+        self.sendFunc(json.dumps({"cmd":"getTemp"})) 
+    def getHum(self):
+        self.sendFunc(json.dumps({"cmd":"getHum"})) 
+    def getLight(self):
+        self.sendFunc(json.dumps({"cmd":"getLight"})) 
+    def getSensors(self):
+        self.sendFunc(json.dumps({"cmd":"getSensors"})) 
+    def getSensorBoardInfo(self):
+        self.sendFunc(json.dumps({"cmd":"sensorBoardInfo"})) 
+
+    def calibrateTempSensor(self, offset):
+        calDict = {"cmd":"calibrateTemp","offset":offset}
+        self.sendFunc(json.dumps(calDict)) 
+
+    def calibrateHumSensor(self, offset):
+        calDict = {"cmd":"calibrateHum","offset":offset}
+        self.sendFunc(json.dumps(calDict)) 
+
+    def calibrateLightSensor(self, value):
+        calDict = {"cmd":"calibrateLight","value":value}
+        self.sendFunc(json.dumps(calDict)) 
+
+    def powerIndication(self, minV, maxV):
+        calDict = {"cmd":"powerIndication","min":minV, "max": maxV}
+        self.sendFunc(json.dumps(calDict)) 
+    
+    def setLEDbrightness(self, brightness):
+        calDict = {"cmd":"setLED","brightness":brightness}
+        self.sendFunc(json.dumps(calDict)) 
+
+    def setLEDColor(self, fgColor, duration=-1):
+        self.setLEDs(1, duration, fgColor, RGBColor(0,0,0))
+
+    def blinkLEDs(self, duration, fgColor, bgColor=RGBColor(0,0,0)):
+        self.setLEDs(1, duration, fgColor, bgColor)
+
+    def cylonLEDs(self, duration, fgColor, bgColor=RGBColor(0,0,0)):
+        self.setLEDs(2, duration, fgColor, bgColor)
+
+    def glowLEDs(self, duration, fgColor, bgColor=RGBColor(0,0,0)):
+        self.setLEDs(3, duration, fgColor, bgColor)
+
+    def setLEDs(self, pattern, duration, fgColor, bgColor):
+        calDict = {"cmd":"setLED","pattern":pattern,"duration":duration,
+            "fgColor":fgColor.toList(), "bgColor":bgColor.toList()
+            }
+        self.sendFunc(json.dumps(calDict)) 
+        
 def initParser():
     import argparse
     parser = argparse.ArgumentParser(description="Records data from powermeter.\

@@ -114,6 +114,16 @@ class SmartMeter(SmartDevice):
         self.MEASUREMENTS = self.measurementInfo["keys"]
         self.MEASUREMENT_BYTES = self.measurementInfo["bytes"]
 
+    def resetEnergy(self):
+        """
+        Set dely reset for the device.
+        
+        :param command:   LoRaWAN AT Command
+        :type  command:   str
+        """
+        if not self.inited: self._notInitedError
+        self.sendFunc(str("{\"cmd\":\"resetEnergy\"}"))
+        
     def calibrate(self, parameter):
         r"""
         Set calibration coefficients.

@@ -306,6 +306,7 @@ class SmartDevice(metaclass=ABCMeta):
         self._sendFunc = None
         self._sysInfoCB = None
         self._logInfoCB = None
+        self.cmdHandler = None
         self._lastDeadConnectionInfo = time.time()+10
         self._lastDeadConnectionCB = time.time()+10
 
@@ -674,15 +675,6 @@ class SmartDevice(metaclass=ABCMeta):
         if not self.inited: self._notInitedError
         self.sendFunc(str("{\"cmd\":\"lora\",\"msg\":\"" + command + "\"}"))
 
-    def resetEnergy(self):
-        """
-        Set dely reset for the device.
-        
-        :param command:   LoRaWAN AT Command
-        :type  command:   str
-        """
-        if not self.inited: self._notInitedError
-        self.sendFunc(str("{\"cmd\":\"resetEnergy\"}"))
 
     def samplingInfo(self):
         """
@@ -1774,6 +1766,7 @@ class SmartDevice(metaclass=ABCMeta):
 
         if "cmd" in list(di.keys()):
             self._handleCommand(di["cmd"], di)
+        if self.cmdHandler is not None: self.cmdHandler(self, di)
         for key in di:
             # Prevent log message from beeing printed out if we have a callback
             if self.logLevelDevice.value > LogLevel.INFO.value and not self.verbose and self._sysInfoCB is not None: return

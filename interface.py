@@ -3,16 +3,16 @@ import sys
 import time
 import re
 import argparse
-from powermeter.powerMeter import PowerMeter
+from powermeter.powerMeter import PowerMeter, RGBColor
 from powermeter.smartMeter import SmartMeter
 from powermeter.smartDevice import LogLevel, VOLTAGE, CURRENT
 import threading
 # from powermeter.getDevices import *
 import powermeter.getDevices as devGetter
 import signal
+import threading
 
 running = True
-
 
 def printRed(string, end="\n"):
     if not isinstance(string, str): string = str(string)
@@ -232,6 +232,24 @@ def log():
     if delete == "yes" or delete == "Yes": 
         for ms in mss: ms.clearLog()
 
+def getColor():
+    while True:
+        c=input()
+        try:
+            splits = c.split(",")
+            if len(splits) != 3: 
+                printRed("Invalid Color R,G,B (e.g. 255,0,0)")
+                continue
+            r = int(splits[0])
+            g = int(splits[1])
+            b = int(splits[2])
+            color = RGBColor(r,g,b)
+            return color
+        except ValueError:
+            printRed("Invalid Color R,G,B (e.g. 255,0,0)")
+            continue
+    return None
+
 def getInputInteger(lowerBound=None, upperBound=None):
     c = input()
     index = -1
@@ -255,6 +273,28 @@ def getInputInteger(lowerBound=None, upperBound=None):
             if valid: break
     return index
 
+def getInputFloat(lowerBound=None, upperBound=None):
+    c = input()
+    index = -1
+    while c:
+        try:
+            index = float(c)
+            break   
+        except ValueError:
+            printRed("Type in valid float")
+            c=input()
+            continue
+        else:
+            valid = True
+            if lowerBound is not None and index < lowerBound: 
+                printRed("float must be > " + str(lowerBound))
+                valid = False
+            if upperBound is not None and index > upperBound: 
+                printRed("float must be < " + str(upperBound))
+                valid = False
+            if valid: break
+    return index
+
 def dailyReset():
     printBlue("Type the hour of day the reset should happen (24h format and -1 to disable)")
     hour = getInputInteger(-1, 23)
@@ -265,13 +305,110 @@ def dailyReset():
 def resetEnergy():
     printBlue("Are you sure you want to reset the Energy (yes/no)")
     yes = input()
+    printBlue("Type value to reset to: ")
+    value = getInputFloat(lowerBound=0.0)
     if yes.lower() == "yes": 
-        for ms in mss: ms.resetEnergy()
+        for ms in mss: 
+            if ms.TYPE == PowerMeter.TYPE:
+                ms.resetEnergy(value=value)
+            else:
+                ms.resetEnergy()
 
 def lora():
     printBlue("Type command to send to LoRa Device")
     cmd = input()
-    for ms in mss: ms.loRaCommand(cmd)
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE:
+            ms.loRaCommand(cmd)
+
+REMOVE_LISTENER_TIME = 1.5
+listener = 0
+def removeListener():
+    global listener
+    if listener > 0: listener -= 1
+
+def startListening():
+    global listener
+    listener += 1
+    threading.Timer(REMOVE_LISTENER_TIME, removeListener).start()
+
+def pir():
+    startListening()
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.getPIR()
+def temp():
+    startListening()
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.getTemp()
+def hum():
+    startListening()
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.getHum()
+def light():
+    startListening()
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.getLight()
+def sensors():
+    startListening()
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.getSensors()
+def sensorsInfo():
+    startListening()
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.getSensorBoardInfo()
+def calTemp():
+    printBlue("Type temp offset in °C [-10.0,10.0]")
+    offset = getInputFloat(-10,10)
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.calibrateTempSensor(offset)
+def calHum():
+    printBlue("Type humidity offset in %% between [-30.0,30.0]")
+    offset = getInputFloat(-30,30)
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.calibrateHumSensor(offset)
+def calLight():
+    printBlue("Type light multiplier [0.0,10.0]")
+    value = getInputFloat(0.0,10.0)
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.calibrateLightSensor(value)
+def powerInd():
+    printBlue("Type lower power bound in Watt")
+    minV = getInputFloat(0.0,10000.0)
+    printBlue("Type upper power bound in Watt")
+    maxV = getInputFloat(0.0,10000.0)
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.powerIndication(minV,maxV)
+def ledBright():
+    startListening()
+    printBlue("Type LED brightness in %% from 0.0 -> 100.0")
+    brightness = getInputFloat(0.0,1.0)
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.setLEDbrightness(brightness)
+def setLEDs():
+    printBlue("Type pattern [0,4]")
+    pattern = getInputInteger(0,4)
+    printBlue("Type duration in ms (-1 for infty)")
+    duration = getInputInteger(lowerBound=-1)
+    printBlue("Type foreground RGB Color as \"R,G,B\"")
+    fgColor = getColor()
+    if fgColor is None: return
+    printBlue("Type background RGB Color as \"R,G,B\"")
+    bgColor = getColor()
+    if bgColor is None: return
+    for ms in mss: 
+        if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
+            ms.setLEDs(pattern,duration,fgColor,bgColor)
 
 def verbosi():
     printBlue("Changing verbosity")
@@ -302,6 +439,18 @@ cmds = [
         {"func":dailyReset,   "cmd":["dailyRestart", "dr"],    "info":"Set daily restart time."},
         {"func":resetEnergy,  "cmd":["resetEnergy", "e"],      "info":"Reset accumulated energy (kWh)"},
         {"func":lora,         "cmd":["lora", "LoRaWAN"],       "info":"Communicate with LoRaWAN module."},
+        {"func":pir,          "cmd":["PIR", "getPIR"],         "info":"Read PIR sensor."},
+        {"func":temp,         "cmd":["temp", "getTemp"],       "info":"Read temperature."},
+        {"func":hum,          "cmd":["hum", "getHum"],         "info":"Read humidity level."},
+        {"func":light,        "cmd":["light", "getLight"],     "info":"Read light sensor."},
+        {"func":sensors,      "cmd":["sensors"],               "info":"Read all sensor."},
+        {"func":sensorsInfo,  "cmd":["sensorsInfo","si"],      "info":"Get sensor board info."},
+        {"func":calTemp,      "cmd":["calTemp","ct"],          "info":"Calibrate temperature sensor."},
+        {"func":calHum,       "cmd":["calHum","ch"],           "info":"Calibrate humidity sensor."},
+        {"func":calLight,     "cmd":["calLight","cl"],         "info":"Calibrate light sensor."},
+        {"func":powerInd,     "cmd":["powerIndication","pi"],  "info":"Set power indication."},
+        {"func":ledBright,    "cmd":["LEDbrightness","LEDb"],  "info":"Set LED brightness."},
+        {"func":setLEDs,      "cmd":["setLED","LED"],          "info":"Set LEDs."},
         {"func":verbosi,      "cmd":["verbose", "v"],          "info":"Change verbose output."}
     ]
 
@@ -324,6 +473,14 @@ def checkInput():
             print("Unknown command")
 
 def sysInfo(device, dic):
+    print("\n")
+    printPink(device.name + ":")
+    for key in dic:
+        print("{0:<15}".format(str(" " + key + ": ")[:15]) + str(dic[key]))
+    print("\n")
+
+def printDict(device, dic):
+    if listener == 0: return
     print("\n")
     printPink(device.name + ":")
     for key in dic:
@@ -381,6 +538,7 @@ if __name__ == '__main__':
                       for i, dev in enumerate(deviceList)]  
     for ms in mss:
         ms.setLogLevel(LogLevel.WARNING)
+        ms.cmdHandler = printDict
     numDevices = len(mss)
 
     
