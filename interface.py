@@ -14,6 +14,18 @@ import threading
 
 running = True
 
+REMOVE_LISTENER_TIME = 1.5
+listener = 0
+def removeListener():
+    global listener
+    if listener > 0: listener -= 1
+
+def startListening():
+    global listener
+    listener += 1
+    threading.Timer(REMOVE_LISTENER_TIME, removeListener).start()
+
+
 def printRed(string, end="\n"):
     if not isinstance(string, str): string = str(string)
     print('\033[91m' + string + '\033[0m', end=end)
@@ -56,6 +68,25 @@ def sample():
     else:
         printRed("Cannot sample with " + str(stateK) + " Hz")
 
+def getEnergy():
+    startListening()
+    for ms in mss: 
+        ms.getEnergy()
+
+def getPower():
+    startListening()
+    for ms in mss: 
+        ms.getPower()
+
+def getVoltage():
+    startListening()
+    for ms in mss: 
+        ms.getVoltage()
+
+def getCurrent():
+    startListening()
+    for ms in mss: 
+        ms.getCurrent()
 
 def stop():
     printBlue("Stopping...")
@@ -256,7 +287,6 @@ def getInputInteger(lowerBound=None, upperBound=None):
     while c:
         try:
             index = int(c)
-            logLevel = list(LogLevel)[index]
             break   
         except ValueError:
             printRed("Type in valid integer")
@@ -321,16 +351,6 @@ def lora():
         if ms.TYPE == PowerMeter.TYPE:
             ms.loRaCommand(cmd)
 
-REMOVE_LISTENER_TIME = 1.5
-listener = 0
-def removeListener():
-    global listener
-    if listener > 0: listener -= 1
-
-def startListening():
-    global listener
-    listener += 1
-    threading.Timer(REMOVE_LISTENER_TIME, removeListener).start()
 
 def pir():
     startListening()
@@ -410,9 +430,10 @@ def setLEDs():
         if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
             ms.setLEDs(pattern,duration,fgColor,bgColor)
 
-def verbosi():
-    printBlue("Changing verbosity")
-    for ms in mss: ms.INFO_VERBOSE = not ms.INFO_VERBOSE
+# Has been removed
+# def verbosi():
+#     printBlue("Changing verbosity")
+#     for ms in mss: ms.INFO_VERBOSE = not ms.INFO_VERBOSE
 
 
 # NOTE: do not change lines for documentation 
@@ -420,6 +441,10 @@ cmds = [
         {"func":helpme,       "cmd":["help", "h"],             "info":"Display this help message."},
         {"func":abort,        "cmd":["c"],                     "info":"Abort, stop this program."},
         {"func":sample,       "cmd":["sample"],                "info":"Start sampling at a given samplingrate."},
+        {"func":getEnergy,    "cmd":["energy", "e"],           "info":"Get energy since last reset."},
+        {"func":getPower,     "cmd":["power", "p"],            "info":"Get active, reactive and apparent power."},
+        {"func":getVoltage,   "cmd":["voltage", "volt"],       "info":"Get RMS voltage in V."},
+        {"func":getCurrent,   "cmd":["current", "cur"],        "info":"Get RMS current in mA."},
         {"func":stop,         "cmd":["stop", "s"],             "info":"Stop sampling."},
         {"func":switch,       "cmd":["switch"],                "info":"Switch relay on or off."},
         {"func":restart,      "cmd":["restart", "r"],          "info":"Restart the device(s)."},
@@ -451,7 +476,7 @@ cmds = [
         {"func":powerInd,     "cmd":["powerIndication","pi"],  "info":"Set power indication."},
         {"func":ledBright,    "cmd":["LEDbrightness","LEDb"],  "info":"Set LED brightness."},
         {"func":setLEDs,      "cmd":["setLED","LED"],          "info":"Set LEDs."},
-        {"func":verbosi,      "cmd":["verbose", "v"],          "info":"Change verbose output."}
+        # {"func":verbosi,      "cmd":["verbose", "v"],          "info":"Change verbose output."}
     ]
 
 def checkInput():

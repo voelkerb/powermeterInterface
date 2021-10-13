@@ -623,6 +623,18 @@ class SmartDevice(metaclass=ABCMeta):
         self.sendFunc("{\"cmd\":\"info\"}")
         return self.TYPE
 
+    def getEnergy(self):
+        self.sendFunc(json.dumps({"cmd":"getEnergy"}))
+
+    def getPower(self):
+        self.sendFunc(json.dumps({"cmd":"getPower"}))
+
+    def getVoltage(self):
+        self.sendFunc(json.dumps({"cmd":"getVoltage"}))
+
+    def getCurrent(self):
+        self.sendFunc(json.dumps({"cmd":"getCurrent"})) 
+        
     def setMqttServer(self, server):
         """
         Set a MQTT server for measurement module.
