@@ -263,6 +263,13 @@ if __name__ == '__main__':
                     samplingRate=args.samplingrate, phase=args.phase)
     ms.frameSize = int(ms.samplingRate/50)
 
+    # Get system info
+    ms.systemInfo()
+    now = time.time()
+    while time.time()-now < 2 and ms.deviceInfo is None: 
+        ms.update()
+        time.sleep(0.1)
+
     ffmpegProc = None
     # Update linked views for plotting
     linkedPlots = []
@@ -302,7 +309,8 @@ if __name__ == '__main__':
     def initPlot():
         global linkedPlots, mapping
         # Enable antialiasing for prettier plots
-        pg.setConfigOptions(antialias=True)
+        # pg.setConfigOptions(antialias=True)
+        pg.setConfigOptions(antialias=False)
 
         # Get measures to display
         for key in mapping:
@@ -390,14 +398,61 @@ if __name__ == '__main__':
     #b Construct the ffmpeg call for a single device
     def constructFFMPEGCall(ms, name=None):
         systemCall = "ffmpeg -hide_banner -f f32le -ar " + str(ms.samplingRate) + " -guess_layout_max 0 -ac "
-        systemCall += str(len(ms.MEASUREMENTS)) + " -i pipe:0 -c:a wavpack "
-        meta = " -metadata:s:a:0"
-        systemCall += meta + " CHANNELS=" + str(len(ms.MEASUREMENTS)) + meta + " CHANNEL_TAGS=\""
-        systemCall += ",".join(ms.MEASUREMENTS) + "\""
-        systemCall += meta + " title=" + "\"" + str(ms.name) + "\""
-        systemCall += " -y "
+        systemCall += str(len(ms.MEASUREMENTS)) + " -i pipe:0"
+        cmdMeasure = next(entry["cmdMeasure"] for i, entry in enumerate(ms.AVAILABLE_MEASURES) if entry["keys"] == ms.MEASUREMENTS)
+        streams = {}
+        if cmdMeasure == None:
+            # [v,i,v,i,v,i] -> [v,i],[v,i],[v,i] 
+            systemCall += " -map 0 -map_channel 0.0.0:0.0.0 -map_channel 0.0.1:0.0.1"
+            systemCall += " -map 0 -map_channel 0.0.2:0.1.0 -map_channel 0.0.3:0.1.1"
+            systemCall += " -map 0 -map_channel 0.0.4:0.2.0 -map_channel 0.0.5:0.2.1"
+            for i in range(3):
+                streams[i] = {
+                        "title": "\"{} L{}\"".format(ms.name, i+1),
+                        "CHANNELS": 2,
+                        "CHANNEL_TAGS": "\"{},{}\"".format(VOLTAGE[0], CURRENT[0]),
+                    }
+        elif cmdMeasure in ["v,i_L1", "v,i_L2", "v,i_L3"]:
+            # v,i
+            c = int(cmdMeasure.split("_")[-1])
+            streams[0] = {
+                    "title": "\"{} {}\"".format(ms.name, c),
+                    "CHANNELS": 2,
+                    "CHANNEL_TAGS": "\"{},{}\"".format(VOLTAGE[0], CURRENT[0]),
+                }
+        elif cmdMeasure == "v,i_RMS":
+            # v,v,v,i,i,i
+            systemCall += " -map 0 -map_channel 0.0.0:0.0.0 -map_channel 0.0.3:0.0.1"
+            systemCall += " -map 0 -map_channel 0.0.1:0.1.0 -map_channel 0.0.4:0.1.1"
+            systemCall += " -map 0 -map_channel 0.0.2:0.2.0 -map_channel 0.0.5:0.2.1"
+            for i in range(3):
+                streams[i] = {
+                        "title": "\"{} L{}\"".format(ms.name, i+1),
+                        "CHANNELS": 2,
+                        "CHANNEL_TAGS": "\"{},{}\"".format(VOLTAGE_RMS[0], CURRENT_RMS[0]),
+                    }
+        elif cmdMeasure == "p,q":
+            # p,p,p,q,q,q
+            systemCall += " -map 0 -map_channel 0.0.0:0.0.0 -map_channel 0.0.3:0.0.1"
+            systemCall += " -map 0 -map_channel 0.0.1:0.1.0 -map_channel 0.0.4:0.1.1"
+            systemCall += " -map 0 -map_channel 0.0.2:0.2.0 -map_channel 0.0.5:0.2.1"
+            for i in range(3):
+                streams[i] = {
+                        "title": "\"{} L{}\"".format(ms.name, i+1),
+                        "CHANNELS": 2,
+                        "CHANNEL_TAGS": "\"{},{}\"".format(ACTIVE_POWER[0], REACTIVE_POWER[0]),
+                    }
+        TS = ms.getStartTs()
+        if TS is None: TS = time.time()
+        for s in streams:
+            for key in streams[s]:
+                systemCall += " -metadata:s:a:{} {}={}".format(s, key, streams[s][key])
+            systemCall += " -metadata:s:a:{} TIMESTAMP={}".format(s, TS)
+        systemCall += " -c:a wavpack -y "
         if name is not None: systemCall +=  name.rstrip(".mkv") + ".mkv"
         else: systemCall += ms.name + ".mkv"
+        print(systemCall)
+        # sys.exit()
         return systemCall
 
     # Update the measurement system
