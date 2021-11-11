@@ -1,4 +1,4 @@
-# Interfacing with many PowerMeters and/or SmartMeters at once
+# Command Line Interface for PowerMeters and SmartMeters
 
 SmartMeters and PowerMeters are custom IP based energy monitoring solutions.
 See the following repos:
