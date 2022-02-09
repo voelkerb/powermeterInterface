@@ -131,9 +131,11 @@ class SmartMeter(SmartDevice):
         :param parameter: dictionary with calibration parameter as \{'v_l1':0.99,'i_l1':1.01 ... \}
         :type  parameter: dict
         """
-        if all([vi in parameter for vi in VOLTAGE[1:]+CURRENT[1:]]):
-            calDict = {"cmd":"calibration","values":[]}
-            for key in [VOLTAGE[1], CURRENT[1], VOLTAGE[2], CURRENT[2], VOLTAGE[3], CURRENT[3]]: calDict["values"] = parameter[key]
+        if all([vi in list(parameter.keys()) for vi in list(VOLTAGE[1:]+CURRENT[1:])]):
+            calDict = {
+                "cmd":"calibration",
+                "cal":[parameter[key] for key in [VOLTAGE[1], CURRENT[1], VOLTAGE[2], CURRENT[2], VOLTAGE[3], CURRENT[3]]]
+            }
             self.sendFunc(json.dumps(calDict)) 
         else:
             self.msPrint("Cannot use given parameters to calibrate")

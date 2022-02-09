@@ -561,6 +561,17 @@ if __name__ == '__main__':
                       name=dev["name"],
                       verbose=args.verbose>1)
                       for i, dev in enumerate(deviceList)]  
+    mss = []
+    for i, dev in enumerate(deviceList):
+        if dev["type"] == SmartMeter.TYPE:
+            mss.append(SmartMeter(updateInThread=False,
+                                 ip=dev["ip"], port=dev["port"], useUDP=False, portUDP=5323+i,
+                                 samplingRate=dev["sr"], name=dev["name"], verbose=args.verbose>1))
+        else:
+            mss.append(PowerMeter(updateInThread=False,
+                                  ip=dev["ip"], port=dev["port"], useUDP=False, portUDP=5323+i,
+                                  samplingRate=dev["sr"], name=dev["name"], verbose=args.verbose>1))
+
     for ms in mss:
         ms.setLogLevel(LogLevel.WARNING)
         ms.cmdHandler = printDict
