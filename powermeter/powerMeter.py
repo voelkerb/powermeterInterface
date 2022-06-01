@@ -138,6 +138,22 @@ class PowerMeter(SmartDevice):
         msg += "}}"
         self.sendFunc(msg)
 
+    def getEnergy(self):
+        """Get energy of meter"""
+        self.sendFunc(json.dumps({"cmd":"getEnergy"}))
+
+    def getPower(self):
+        """Get power of meter"""
+        self.sendFunc(json.dumps({"cmd":"getPower"}))
+
+    def getVoltage(self):
+        """Get voltage of meter"""
+        self.sendFunc(json.dumps({"cmd":"getVoltage"}))
+
+    def getCurrent(self):
+        """Get current of meter"""
+        self.sendFunc(json.dumps({"cmd":"getCurrent"})) 
+        
     def resetEnergy(self, value=None):
         """
         Set dely reset for the device.

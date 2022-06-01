@@ -124,6 +124,22 @@ class SmartMeter(SmartDevice):
         if not self.inited: self._notInitedError
         self.sendFunc(str("{\"cmd\":\"resetEnergy\"}"))
         
+    def getEnergy(self):
+        """Get energy of meter"""
+        self.sendFunc(json.dumps({"cmd":"getEnergy"}))
+
+    def getPower(self):
+        """Get power of meter"""
+        self.sendFunc(json.dumps({"cmd":"getPower"}))
+
+    def getVoltage(self):
+        """Get voltage of meter"""
+        self.sendFunc(json.dumps({"cmd":"getVoltage"}))
+
+    def getCurrent(self):
+        """Get current of meter"""
+        self.sendFunc(json.dumps({"cmd":"getCurrent"})) 
+        
     def calibrate(self, parameter):
         r"""
         Set calibration coefficients.
