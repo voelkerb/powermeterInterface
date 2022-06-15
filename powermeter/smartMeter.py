@@ -37,12 +37,12 @@ class SmartMeter(SmartDevice):
     DEFAULT_SR = 8000
 
     AVAILABLE_MEASURES = [
-            {"keys": [VOLTAGE[1], CURRENT[1], VOLTAGE[2], CURRENT[2], VOLTAGE[3], CURRENT[3]], "bytes": 24, "cmdMeasure": None},
-            {"keys": [VOLTAGE[0], CURRENT[0]], "bytes": 8, "cmdMeasure": "v,i_L1"},
-            {"keys": [VOLTAGE[0], CURRENT[0]], "bytes": 8, "cmdMeasure": "v,i_L2"},
-            {"keys": [VOLTAGE[0], CURRENT[0]], "bytes": 8, "cmdMeasure": "v,i_L3"},
-            {"keys": [VOLTAGE_RMS[1], VOLTAGE_RMS[2], VOLTAGE_RMS[3], CURRENT_RMS[1], CURRENT_RMS[2], CURRENT_RMS[3]], "bytes": 24, "cmdMeasure": "v,i_RMS"},
-            {"keys": [ACTIVE_POWER[1], ACTIVE_POWER[2], ACTIVE_POWER[3], REACTIVE_POWER[1], REACTIVE_POWER[2], REACTIVE_POWER[3]], "bytes": 8, "cmdMeasure": "p,q"},
+            {"keys": [VOLTAGE[1], CURRENT[1], VOLTAGE[2], CURRENT[2], VOLTAGE[3], CURRENT[3]], "dtype":np.float32, "bytes": 24, "cmdMeasure": None},
+            {"keys": [VOLTAGE[0], CURRENT[0]], "dtype":np.float32, "bytes": 8, "cmdMeasure": "v,i_L1"},
+            {"keys": [VOLTAGE[0], CURRENT[0]], "dtype":np.float32, "bytes": 8, "cmdMeasure": "v,i_L2"},
+            {"keys": [VOLTAGE[0], CURRENT[0]], "dtype":np.float32, "bytes": 8, "cmdMeasure": "v,i_L3"},
+            {"keys": [VOLTAGE_RMS[1], VOLTAGE_RMS[2], VOLTAGE_RMS[3], CURRENT_RMS[1], CURRENT_RMS[2], CURRENT_RMS[3]], "dtype":np.float32, "bytes": 24, "cmdMeasure": "v,i_RMS"},
+            {"keys": [ACTIVE_POWER[1], ACTIVE_POWER[2], ACTIVE_POWER[3], REACTIVE_POWER[1], REACTIVE_POWER[2], REACTIVE_POWER[3]], "dtype":np.float32, "bytes": 8, "cmdMeasure": "p,q"},
         ]
 
 
@@ -279,7 +279,25 @@ if __name__ == '__main__':
                     portName=args.serial, baudrate=args.baudrate, measures=args.measures.split(','),
                     verbose=args.verbose, updateInThread=False, name="smartmeter",
                     samplingRate=args.samplingrate, phase=args.phase)
-    ms.frameSize = int(ms.samplingRate/50)
+    ms.frameSize = max(1,int(ms.samplingRate/50))
+
+
+    # Catch control+c
+    running = True
+    app = None
+    # Get external abort
+    def aborted(signal, frame=None):
+        global running
+        running = False
+        if app: app.quit()
+        if sys.platform == 'win32':
+            return True
+
+    if sys.platform == 'win32':
+        import win32api
+        win32api.SetConsoleCtrlHandler(aborted, True)
+    else:
+        signal.signal(signal.SIGINT, aborted)
 
     # Get system info
     ms.systemInfo()
@@ -518,14 +536,6 @@ if __name__ == '__main__':
         if ms.samplingRate <= 10: maxTime = 20.0
         maxPoints = int(ms.samplingRate*maxTime)
 
-    # Catch control+c
-    running = True
-    # Get external abort
-    def aborted(signal, frame):
-        global running
-        running = False
-        if args.plot: app.quit()
-    signal.signal(signal.SIGINT, aborted)
 
 
     plotQueue = None

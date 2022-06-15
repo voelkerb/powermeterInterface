@@ -60,10 +60,10 @@ class PowerMeter(SmartDevice):
     TYPE = "PowerMeter".lower()
     DEFAULT_SR = 4000
     AVAILABLE_MEASURES = [
-                {"keys": [VOLTAGE[0], CURRENT[0]],                                           "bytes": 8,  "cmdMeasure": "v,i"    },
-                {"keys": [ACTIVE_POWER[0], REACTIVE_POWER[0]],                               "bytes": 8,  "cmdMeasure": "p,q"    },
-                {"keys": [VOLTAGE[0], CURRENT[0], ACTIVE_POWER[0], REACTIVE_POWER[0]], "bytes": 16, "cmdMeasure": "v,i,p,q"},
-                {"keys": [VOLTAGE_RMS[0], CURRENT_RMS[0]],                                   "bytes": 8,  "cmdMeasure": "v,i_RMS"},
+                {"keys": [VOLTAGE[0], CURRENT[0]],                                     "dtype":np.float32, "bytes": 8,  "cmdMeasure": "v,i"    },
+                {"keys": [ACTIVE_POWER[0], REACTIVE_POWER[0]],                         "dtype":np.float32, "bytes": 8,  "cmdMeasure": "p,q"    },
+                {"keys": [VOLTAGE[0], CURRENT[0], ACTIVE_POWER[0], REACTIVE_POWER[0]], "dtype":np.float32, "bytes": 16, "cmdMeasure": "v,i,p,q"},
+                {"keys": [VOLTAGE_RMS[0], CURRENT_RMS[0]],                             "dtype":np.float32, "bytes": 8,  "cmdMeasure": "v,i_RMS"},
             ]
 
     # Init function with default values
@@ -295,8 +295,25 @@ if __name__ == '__main__':
                     verbose=args.verbose, updateInThread=False, name=name,
                     flowControl=False,
                     samplingRate=args.samplingrate, measures=args.measures.split(','))
-    ms.frameSize = int(args.samplingrate/50.0)
+    ms.frameSize = max(1,int(ms.samplingRate/50))
     
+    # Catch control+c
+    running = True
+    app = None
+    # Get external abort
+    def aborted(signal, frame=None):
+        global running
+        running = False
+        if app: app.quit()
+        if sys.platform == 'win32':
+            return True
+
+    if sys.platform == 'win32':
+        import win32api
+        win32api.SetConsoleCtrlHandler(aborted, True)
+    else:
+        signal.signal(signal.SIGINT, aborted)
+
     ffmpegProc = None
     # Update linked views for plotting
     linkedPlots = []
@@ -449,15 +466,6 @@ if __name__ == '__main__':
         if ms.samplingRate <= 100: maxTime = 10.0
         if ms.samplingRate <= 10: maxTime = 20.0
         maxPoints = int(ms.samplingRate*maxTime)
-
-    # Catch control+c
-    running = True
-    # Get external abort
-    def aborted(signal, frame):
-        global running
-        running = False
-        if args.plot: app.quit()
-    signal.signal(signal.SIGINT, aborted)
 
 
     plotQueue = None
