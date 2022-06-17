@@ -3,6 +3,8 @@
 import sys
 import os
 
+import numpy
+import numpy as np
 import serial
 import socket
 import struct
@@ -10,7 +12,6 @@ import warnings
 import time
 import traceback
 import json
-import numpy as np
 import threading
 import select
 import multiprocessing

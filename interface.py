@@ -230,8 +230,17 @@ def streamServer():
 def mqttServer():
     printBlue("Type in mqtt server ip + enter")
     server = input()
-    printBlue("MqttServer: " + str(server))
-    for ms in mss: ms.setMqttServer(server)
+    printBlue("Type in mqtt user + enter (blank for no user)")
+    user = input()
+    printBlue("Type in mqtt pwd + enter (blank for no pwd)")
+    pwd = input()
+    printBlue("MqttServer: " + str(server) + ", user: " + user, ", pwd: " + pwd)
+    for ms in mss: ms.setMqttServer(server, user, pwd)
+
+def publishIntv():
+    printBlue("Type in publish interval in seconds (-1 to disable) + enter")
+    value = getInputFloat(-1,3600.0)
+    for ms in mss: ms.setPublishInterval(value)
 
 def timeServer():
     printBlue("Type in time server ip or dns + enter")
@@ -454,6 +463,7 @@ cmds = [
         {"func":mdns,         "cmd":["mdns", "m"],             "info":"Set new MDNS name."},
         {"func":ntp,          "cmd":["ntp", "n"],              "info":"Start NTP synchronisation."},
         {"func":streamServer, "cmd":["streamServer", "ss"],    "info":"Add a stream server."},
+        {"func":publishIntv,  "cmd":["pubIntv", "pi"],         "info":"Publish intv for mqtt msges."},
         {"func":mqttServer,   "cmd":["mqttServer", "mqtt"],    "info":"Add a mqtt server address."},
         {"func":timeServer,   "cmd":["timeServer", "t"],       "info":"Add a time server."},
         {"func":addWifi,      "cmd":["addWifi", "aw"],         "info":"Add a wifi AP."},

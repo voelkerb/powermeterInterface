@@ -635,15 +635,32 @@ class SmartDevice(metaclass=ABCMeta):
     def getCurrent(self):
         self.sendFunc(json.dumps({"cmd":"getCurrent"})) 
         
-    def setMqttServer(self, server):
+    def setPublishInterval(self, intv):
+        cmd = {"cmd":"getCurrent","intv":intv}
+        self.sendFunc(json.dumps(cmd)) 
+
+    def setMqttServer(self, server, user=None, pwd=None):
         """
         Set a MQTT server for measurement module.
            
         :param server: IP address of MQTT broker. Use '-' to disable mqtt.
         :type  server: str
+        :param user: User name for MQTT broker. Use None to disable.
+        :type  user: str
+        :param pwd: PWD for MQTT broker. Use None to disable.
+        :type  pwd: str
         """
         if not self.inited: self._notInitedError
-        self.sendFunc(str("{\"cmd\":\"mqttServer\", \"payload\":{\"server\":\"" + server + "\"}}"))
+
+        cmd = {
+            "cmd":"mqttServer",
+               "payload": 
+               {"server": server}
+        } 
+        if user and len(user) > 0: cmd["payload"]["user"] = user
+        if pwd and len(pwd) > 0: cmd["payload"]["pwd"] = pwd
+
+        self.sendFunc(json.dumps(cmd))
 
     def setStreamServer(self, server):
         """
