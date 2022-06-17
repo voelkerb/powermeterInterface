@@ -2,75 +2,51 @@
 # !/usr/bin/python
 import sys
 import os
+
+import serial
+import socket
+import struct
+import warnings
 import time
 import traceback
+import json
+import numpy as np
 import threading
+import select
+import multiprocessing
+from multiprocessing import Process, Value
+import platform
+# We need to add the path
+from queue import Queue, Empty
+import json
 # Import top level module
 try:
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 except NameError:
     root = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
 sys.path.append(root)
-# We need to add the path
 from powermeter.smartDevice import *
-import json
 
 
-class RGBColor():
-    """
-    RGB Color class.
-    """
+class SmartBlueline(SmartDevice):
+    """Class which handles a Blueline module."""
 
-    def __init__(self,r=10,g=10,b=10):
-        self.red = r
-        self.green = g
-        self.blue = b
+    TYPE = "Blueline".lower()
+
+    DEFAULT_SR = 1000
+    BL5080_4T_LSB_TO_uVolt = 62.5
+    BL5080_4T_GAIN = 67.66
     
-    def red(self):
-        self.red = 255
-        self.green = 0
-        self.blue = 0
-
-    def green(self):
-        self.green = 255
-        self.red = 0
-        self.blue = 0
-
-    def red(self):
-        self.blue = 255
-        self.green = 0
-        self.red = 0
-
-    def toList(self):
-        return [self.red, self.green, self.blue]
-
-    def __str__(self):
-        """
-        Overloaded to String method
-
-        :return: String representation of an RGB color
-        :rtype:  str
-        """
-        return "[{},{},{}]".format(self.red,self.green,self.blue)
-
-
-class PowerMeter(SmartDevice):
-    """Class which handles a measurement system."""
-    
-    TYPE = "PowerMeter".lower()
-    DEFAULT_SR = 4000
     AVAILABLE_MEASURES = [
-                {"keys": [VOLTAGE[0], CURRENT[0]],                                     "dtype":np.float32, "bytes": 8,  "cmdMeasure": "v,i"    },
-                {"keys": [ACTIVE_POWER[0], REACTIVE_POWER[0]],                         "dtype":np.float32, "bytes": 8,  "cmdMeasure": "p,q"    },
-                {"keys": [VOLTAGE[0], CURRENT[0], ACTIVE_POWER[0], REACTIVE_POWER[0]], "dtype":np.float32, "bytes": 16, "cmdMeasure": "v,i,p,q"},
-                {"keys": [VOLTAGE_RMS[0], CURRENT_RMS[0]],                             "dtype":np.float32, "bytes": 8,  "cmdMeasure": "v,i_RMS"},
-            ]
+            {"keys": [f"CH{i}" for i in range(4)], "bytes": 24, "dtype":np.float32, "cmdMeasure": None}
+        ]
+
 
     # Init function with default values
-    def __init__(self, name=None, deviceName=None, samplingRate=None, measures=None,
+    def __init__(self, name=None, deviceName=None, samplingRate=None, phase=None, measures=None,
                        serialPort=None, portName=None, baudrate=2000000,
                        socketObject=None, ip=None, port=54321, stream=False,
-                       useUDP=False, portUDP=54323,
+                       useUDP=False, portUDP=54323, rawValues=False,
                        updateInThread=False, directInit=True,
                        flowControl=False,
                        logLevel=LogLevel.INFO, verbose=0, logger=print):
@@ -99,44 +75,91 @@ class PowerMeter(SmartDevice):
                             updateInThread=updateInThread, directInit=directInit,
                             flowControl=flowControl,
                             logLevel=logLevel, verbose=verbose, logger=logger)
-        
+
         if samplingRate == None: self.samplingRate = self.DEFAULT_SR
-        # Standard measures
+       
         self.measurementInfo = self.AVAILABLE_MEASURES[0]
         
-        # Look what measures we need
+            # Look what measures we need
         if measures is not None:
-            self.measurementInfo = None
-            for availableMeasureSet in self.AVAILABLE_MEASURES:
-                if all(item in availableMeasureSet["keys"] for item in measures): 
-                    self.measurementInfo = availableMeasureSet
-                    break
+            # make list if it is just a string with , spearated channelnames
+            singleMeasures = measures[:]
+            if not isinstance(measures, list): singleMeasures = measures.split(",")
+            # remove leading trailing spaces
+            singleMeasures = [s.rstrip(" ").lstrip(" ") for s in singleMeasures]
+            # Sort, otherwise would be very difficult 
+            singleMeasures.sort()
+            allowedChannels = self.AVAILABLE_MEASURES[0]["keys"]
+            self.measurementInfo.update({"keys": [], "cmdMeasure": []})
+            # {"keys": [f"CH{i}" for i in range(4)], "bytes": 24, "cmdMeasure": None}
+            for s in singleMeasures:
+                if s not in allowedChannels:
+                    sys.exit(f"Channel {s} is not a valid channel")
+                self.measurementInfo["keys"].append(s)
+                self.measurementInfo["cmdMeasure"].append(s)
+            self.measurementInfo["bytes"] = len(self.measurementInfo["keys"])*4
+            # self.measurementInfo = None
+            # for availableMeasureSet in self.AVAILABLE_MEASURES:
+            #     if all(item in availableMeasureSet["keys"] for item in measures): 
+            #         self.measurementInfo = availableMeasureSet
+            #         break
             if self.measurementInfo is None: 
-                sys.exit("Powermeter cannot handle mesurements: " + str(measures)) 
-        
+                sys.exit("Blueline cannot handle mesurements: " + str(measures)) 
+            else:
+                if verbose: self.msPrint("Using mesures: " + str(self.measurementInfo))
+        self.rawValues = rawValues
+        if rawValues:
+            if verbose: self.msPrint("Raw sampling using 16 bit integer values")
+            self.measurementInfo["dtype"] = np.uint16
+            self.measurementInfo["bytes"] = len(self.measurementInfo["keys"])*2
+        self.offsets = {}
+        self.scaling = {}
+        self._multiply = {}
+        self.refTemp = 0
+
         self.MEASUREMENTS = self.measurementInfo["keys"]
         self.MEASUREMENT_BYTES = self.measurementInfo["bytes"]
 
+    def _handleCommand(self, cmd, di):
+        super()._handleCommand(cmd, di)
+        if cmd == "sample":
+            #  Set start ts if in dictionary
+            if "offset" in di: self.offsets = {v:d for v,d in zip(self.MEASUREMENTS, di["offset"])}
+            if "scaling" in di: self.scalings = {v:d for v,d in zip(self.MEASUREMENTS, di["scaling"])}
+            if "scaling" in di: self._multiply = {v:self.BL5080_4T_LSB_TO_uVolt/self.BL5080_4T_GAIN/self.scalings[s] for v,s in zip(self.MEASUREMENTS, self.scalings)}
+            if self.verbose: self.msPrint("New * factor: " + str(self._multiply))
+            if "refTemp" in di: self.refTemp = di["refTemp"]
+
     def defaultSettings(self):
+        """
+        Set default values to this Blueline.
+        """
         self.samplingRate = self.DEFAULT_SR
         self.measurementInfo = self.AVAILABLE_MEASURES[0]
         self.MEASUREMENTS = self.measurementInfo["keys"]
         self.MEASUREMENT_BYTES = self.measurementInfo["bytes"]
 
+    def resetEnergy(self):
+        """
+        Set dely reset for the device.
+        
+        :param command:   LoRaWAN AT Command
+        :type  command:   str
+        """
+        if not self.inited: self._notInitedError
+        self.sendFunc(str("{\"cmd\":\"resetEnergy\"}"))
     
-    def start(self, ts=None, switchOn=True, sendSlot=None, ntpConfidenceMs=None):
-        """Overloading start function to switch it on if needed."""
-        if switchOn:
-            self.switch(True)
-        super().start(ts=ts, sendSlot=sendSlot, ntpConfidenceMs=ntpConfidenceMs)
-
-    def switch(self, on):
-        """Switch socket of the powermeter."""
-        msg = "{\"cmd\":\"switch\",\"payload\":{\"value\":"
-        if on: msg += str(1)
-        else: msg += str(0)
-        msg += "}}"
-        self.sendFunc(msg)
+    def getFrame(self, i):
+        """Get a frame, max convert from raw to float"""
+        if len(self.frames) > i:
+            if self.rawValues:
+                dt = {'names':self.frames[i].dtype.names, 'formats':[np.float32]*len(self.MEASUREMENTS)}
+                X = np.empty((len(self.frames[i]),), dtype=dt)
+                for m in self.MEASUREMENTS: X[m] = self.frames[i][m]
+                for m in self.MEASUREMENTS: X[m] = (X[m]-self.offsets[m])*self._multiply[m]+self.refTemp
+                return X
+            return self.frames[i]
+        return None
 
     def getEnergy(self):
         """Get energy of meter"""
@@ -154,119 +177,63 @@ class PowerMeter(SmartDevice):
         """Get current of meter"""
         self.sendFunc(json.dumps({"cmd":"getCurrent"})) 
         
-    def resetEnergy(self, value=None):
-        """
-        Set dely reset for the device.
-        
-        :param command:   LoRaWAN AT Command
-        :type  command:   str
-        """
-        calDict = {"cmd":"resetEnergy"}
-        if value is not None:
-            calDict["energy"] = value
-        self.sendFunc(json.dumps(calDict)) 
-
     def calibrate(self, parameter):
         r"""
         Set calibration coefficients.
 
-        :param parameter: dictionary with calibration parameter as \{'v':0.99,'i':1.01 \}
+        :param parameter: dictionary with calibration parameter as \{'v_l1':0.99,'i_l1':1.01 ... \}
         :type  parameter: dict
         """
-        if VOLTAGE[0] in parameter and CURRENT[0] in parameter:
-            calDict = {"cmd":"calibration","calV":parameter["v"],"calI":parameter["i"]}
+        if all([vi in list(parameter.keys()) for vi in list(VOLTAGE[1:]+CURRENT[1:])]):
+            calDict = {
+                "cmd":"calibration",
+                "cal":[parameter[key] for key in [VOLTAGE[1], CURRENT[1], VOLTAGE[2], CURRENT[2], VOLTAGE[3], CURRENT[3]]]
+            }
             self.sendFunc(json.dumps(calDict)) 
         else:
             self.msPrint("Cannot use given parameters to calibrate")
-
-    def hasSensorBoard(self):
-        if self.deviceInfo is not None:
-            if "sensors" in self.deviceInfo and self.deviceInfo["sensors"]: 
-                return True
-        return False
-
-    def getPIR(self):
-        self.sendFunc(json.dumps({"cmd":"getPIR"})) 
-    def getTemp(self):
-        self.sendFunc(json.dumps({"cmd":"getTemp"})) 
-    def getHum(self):
-        self.sendFunc(json.dumps({"cmd":"getHum"})) 
-    def getLight(self):
-        self.sendFunc(json.dumps({"cmd":"getLight"})) 
-    def getSensors(self):
-        self.sendFunc(json.dumps({"cmd":"getSensors"})) 
-    def getSensorBoardInfo(self):
-        self.sendFunc(json.dumps({"cmd":"sensorBoardInfo"})) 
-
-    def calibrateTempSensor(self, offset):
-        calDict = {"cmd":"calibrateTemp","offset":offset}
-        self.sendFunc(json.dumps(calDict)) 
-
-    def calibrateHumSensor(self, offset):
-        calDict = {"cmd":"calibrateHum","offset":offset}
-        self.sendFunc(json.dumps(calDict)) 
-
-    def calibrateLightSensor(self, value):
-        calDict = {"cmd":"calibrateLight","value":value}
-        self.sendFunc(json.dumps(calDict)) 
-
-    def powerIndication(self, minV, maxV):
-        calDict = {"cmd":"powerIndication","min":minV, "max": maxV}
-        self.sendFunc(json.dumps(calDict)) 
     
-    def setLEDbrightness(self, brightness):
-        calDict = {"cmd":"setLED","brightness":brightness}
-        self.sendFunc(json.dumps(calDict)) 
 
-    def setLEDColor(self, fgColor, duration=-1):
-        self.setLEDs(1, duration, fgColor, RGBColor(0,0,0))
 
-    def blinkLEDs(self, duration, fgColor, bgColor=RGBColor(0,0,0)):
-        self.setLEDs(1, duration, fgColor, bgColor)
-
-    def cylonLEDs(self, duration, fgColor, bgColor=RGBColor(0,0,0)):
-        self.setLEDs(2, duration, fgColor, bgColor)
-
-    def glowLEDs(self, duration, fgColor, bgColor=RGBColor(0,0,0)):
-        self.setLEDs(3, duration, fgColor, bgColor)
-
-    def setLEDs(self, pattern, duration, fgColor, bgColor):
-        calDict = {"cmd":"setLED","pattern":pattern,"duration":duration,
-            "fgColor":fgColor.toList(), "bgColor":bgColor.toList()
-            }
-        self.sendFunc(json.dumps(calDict)) 
-        
 def initParser():
     import argparse
-    parser = argparse.ArgumentParser(description="Records data from powermeter.\
+    parser = argparse.ArgumentParser(description="Records data from Blueline.\
                                                   Can plot it or write it to mkv file. Serial or TCP/UDP support.\
                                                   Choose between sampling rates and measures.")
     parser.add_argument("--host", type=str,
-                        help="Hostname or IP address of device: e.g. powermeter01.local")
+                        help="Hostname or IP address of device e.g. blueline001.local")
     parser.add_argument("--port", type=int, default=54321,
                         help="Port, default: 54321.")
-    parser.add_argument("--measures",type=str, choices=[",".join(measure['keys']) for measure in PowerMeter.AVAILABLE_MEASURES],
-                        default=",".join(PowerMeter.AVAILABLE_MEASURES[0]['keys']),
-                        help="Measures to use for recording/plotting")
+    parser.add_argument("--phase", type=int, choices=[None, 1, 2, 3], default=None,
+                        help="Phase to measure. A Blueline is typically connected to L1, L2 and L3")
+    # parser.add_argument("--measures", type=str, choices=[",".join(measure['keys']) for measure in SmartBlueline.AVAILABLE_MEASURES],
+    parser.add_argument("--measures", type=str,
+                        default=",".join(SmartBlueline.AVAILABLE_MEASURES[0]['keys']),
+                        help="Measures to use for recording/plotting \
+                              (default: " + str(",".join(SmartBlueline.AVAILABLE_MEASURES[0]['keys'])) + ")")
     parser.add_argument("--samplingrate", type=int, default=4000,
-                        help="Samplingrate of the powermeters, default: 4000")
+                        help="Samplingrate of the blueline, default: 250")
     parser.add_argument("--serial", type=str,
                         help="SerialPort path. COMX under windows, /dev/ttyXXX under Unix systems.")
     parser.add_argument("--baudrate", type=int, default=2000000,
                         help="Baudrate of serialport")
     parser.add_argument("--udp", action="store_true",
                         help="If UDP should be used to send data")
+    parser.add_argument("--raw", action="store_true",
+                        help="If data should be sent as 16 bit integers over channel, effectively devides data througput by 2")
     parser.add_argument("--plot", action="store_true",
                         help="If data should be plotted")
     parser.add_argument("--ffmpeg", action="store_true",
                         help="If data should be written to mkv file. You can specify filename with --filename")
+    parser.add_argument("--csv", action="store_true",
+                        help="If data should be written to csv file. You can specify filename with --filename")
     parser.add_argument("--filename", type=str,
                         help="If ffmpeg is active, it will be stored under this filename")
     parser.add_argument("-v", "--verbose", action="count", default=0,
                         help="Increase output verbosity")
-
     return parser
-    
+
+
 # _______________Can be called as main__________________
 if __name__ == '__main__':
     import time
@@ -276,6 +243,7 @@ if __name__ == '__main__':
     import pyqtgraph as pg
     import threading
     import subprocess
+    import csv
     from queue import Queue
     parser = initParser()
     args = parser.parse_args()
@@ -286,25 +254,23 @@ if __name__ == '__main__':
     if args.serial is not None and args.baudrate is not None: validConfig = True
     if not validConfig: sys.exit("Either provide ip + port or serial + baudrate")
 
-    name = "powermeter"
-    if args.host is not None and "powermeter" in args.host:
-        name = args.host.rstrip(".local")
     # device connection
-    ms = PowerMeter(ip=args.host, port=args.port, useUDP=args.udp,
-                    portName=args.serial, baudrate=args.baudrate,
-                    verbose=args.verbose, updateInThread=False, name=name,
-                    flowControl=False,
-                    samplingRate=args.samplingrate, measures=args.measures.split(','))
+    ms = SmartBlueline(ip=args.host, port=args.port, useUDP=args.udp,
+                  portName=args.serial, baudrate=args.baudrate, measures=args.measures.split(','),
+                  verbose=args.verbose, updateInThread=False, name="blueline", rawValues=args.raw,
+                  samplingRate=args.samplingrate, directInit=True)
     ms.frameSize = max(1,int(ms.samplingRate/50))
-    
+
     # Catch control+c
-    running = True
     app = None
+    running = True
     # Get external abort
     def aborted(signal, frame=None):
         global running
         running = False
         if app: app.quit()
+        
+        if args.serial: sys.exit()
         if sys.platform == 'win32':
             return True
 
@@ -313,6 +279,13 @@ if __name__ == '__main__':
         win32api.SetConsoleCtrlHandler(aborted, True)
     else:
         signal.signal(signal.SIGINT, aborted)
+
+    # Get system info
+    ms.systemInfo()
+    now = time.time()
+    while time.time()-now < 2 and ms.deviceInfo is None: 
+        ms.update()
+        time.sleep(0.1)
 
     ffmpegProc = None
     # Update linked views for plotting
@@ -324,10 +297,12 @@ if __name__ == '__main__':
             rightAxisPlot.linkedViewChanged(leftAxisPlot.getViewBox(), rightAxisPlot.XAxis)
 
     # Mapping holds plots and data
-    mapping = {ACTIVE_POWER[0]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               REACTIVE_POWER[0]: {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
-               VOLTAGE[0]: {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
-               CURRENT[0]:  {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},}
+    mapping = {
+        "CH0": {"active": False, "plot": None, "curve": None, "pen":"r", "data": []},
+        "CH1": {"active": False, "plot": None, "curve": None, "pen":"b", "data": []},
+        "CH2": {"active": False, "plot": None, "curve": None, "pen":"g", "data": []},
+        "CH3": {"active": False, "plot": None, "curve": None, "pen":[0,0,0,128], "data": []},
+        }
 
     # Init plot depending on selected measures
     def initPlot():
@@ -340,37 +315,20 @@ if __name__ == '__main__':
             if key in ms.MEASUREMENTS: mapping[key]["active"] = True
 
         # add new plot for power (same axis scale)
-        if ACTIVE_POWER[0] in ms.MEASUREMENTS or REACTIVE_POWER[0] in ms.MEASUREMENTS:
-            p_c_0 = win.addPlot()
-            p_c_0.getViewBox().setMouseEnabled(x=False, y=False)
-            p_c_0.setLabel('left', "Power [W]")
-            p_c_0.setLabel('right', "Power [VAR]")
-            mapping[ACTIVE_POWER[0]]["plot"] = p_c_0
-            mapping[REACTIVE_POWER[0]]["plot"] = p_c_0
-            win.nextRow()
-
-        # add plot for current and voltage different axis
-        if VOLTAGE[0] in ms.MEASUREMENTS or CURRENT[0] in ms.MEASUREMENTS:
-            p_c_1 = win.addPlot()
-            p_c_1.getViewBox().setMouseEnabled(x=False, y=False)
-            p_c_1.setLabel('left', "Voltage [V]")
-            p_c_1.setLabel('right', "Current [mA]")
-            mapping[VOLTAGE[0]]["plot"] = p_c_1
-
-            p_c_2 = pg.ViewBox()
-            p_c_1.scene().addItem(p_c_2)
-            p_c_1.getAxis('right').linkToView(p_c_2)
-            p_c_2.setXLink(p_c_1)
-            mapping[CURRENT[0]]["plot"] = p_c_2
-            linkedPlots.append((p_c_1, p_c_2))
+        p_c_0 = win.addPlot()
+        p_c_0.getViewBox().setMouseEnabled(x=False, y=False)
+        p_c_0.setLabel('left', "Value")
+        for ch in ms.MEASUREMENTS:
+            mapping[ch]["plot"] = p_c_0
 
         updateViews()
-        for leftAxisPlot, rightAxisPlot in linkedPlots:
-            leftAxisPlot.getViewBox().sigResized.connect(updateViews)
+        if len(linkedPlots) > 0:
+            for leftAxisPlot, rightAxisPlot in linkedPlots:
+                leftAxisPlot.getViewBox().sigResized.connect(updateViews)
 
-        for leftAxisPlot, rightAxisPlot in linkedPlots:
-            if leftAxisPlot is not None:
-                leftAxisPlot.showAxis('right')
+            for leftAxisPlot, rightAxisPlot in linkedPlots:
+                if leftAxisPlot is not None:
+                    leftAxisPlot.showAxis('right')
 
         # add curves that hold the data
         for key in mapping:
@@ -421,30 +379,51 @@ if __name__ == '__main__':
             thePath = ms.name + ".mkv"
         systemCall += thePath
         return systemCall
-
+    
+    csvFile = None
     # Update the measurement system
     def updateMs():
-        global ffmpegProc, running, ms, plotQueue
+        global ffmpegProc, running, ms, plotQueue, csvFile
         # Init ffmpeg
         if args.ffmpeg:
-            FNULL = open(os.devnull, 'w')
+            FNULL = open(os.devnull, 'w', newline='', encoding='utf-8')
             ffmpegCall = constructFFMPEGCall(ms, path=args.filename)
-            ffmpegProc = subprocess.Popen(ffmpegCall, shell=True, stdin=subprocess.PIPE, preexec_fn=os.setsid)
-
-        while running:
+            ffmpegProc = subprocess.Popen(ffmpegCall, shell=True, stdin=subprocess.PIPE)
+        if args.csv:
+            # Embed timestamp in outputfilename
+            ts = ms.startTs
+            if ts is None: ts = time.time()
+            filename = ms.deviceName + "_" + time_format_ymdhms(ts).replace(".","_").replace(":","_").replace("/","_").replace(" ","__") + ".csv"
+            # given filename
+            if args.filename is not None: filename = args.filename
+            # Make sure csv format
+            if not filename.find(".csv"): filename.split(".")[0] + ".csv"
+            if args.verbose: print("Storing CSV data to: " + filename)
+            csvFile = open(filename, 'w')
+            csvWriter = csv.writer(csvFile, lineterminator='\n')
+            csvWriter.writerow(ms.MEASUREMENTS)
+        while running or len(ms.frames):
             # Update ms
-            ms.update()
+            if running: ms.update()
             # on every new frame
             while len(ms.frames) > 0:
+                # frame = ms.frames[0]
+                frame = ms.getFrame(0)
                 # Update ffmpeg
                 if args.ffmpeg:
-                    ffmpegProc.stdin.write(ms.frames[0].transpose().view(np.float32).reshape(ms.frames[0].shape + (-1,)).flatten().tobytes())
+                    ffmpegProc.stdin.write(frame.transpose().view(np.float32).reshape(frame.shape + (-1,)).flatten().tobytes())
+                if args.csv:
+                    csvWriter.writerows(frame)
+
                 # update plot using Queue
-                if plotQueue is not None: plotQueue.put(ms.frames[0])
+                if plotQueue is not None: plotQueue.put(frame)
                 # remove frame
                 del ms.frames[0]
-            time.sleep(0.001)
-
+            if args.serial:
+                time.sleep(0.00001)
+            else:
+                time.sleep(0.001)
+            
     # global plot variables required
     if args.plot:
         # Setup main GUI
@@ -468,26 +447,11 @@ if __name__ == '__main__':
         maxPoints = int(ms.samplingRate*maxTime)
 
 
+
     plotQueue = None
     if args.plot: plotQueue = Queue(maxsize=0)
 
     ms.start()
-
-    # EVERY_X_SECONDS = 20
-    # while running:
-    #     if int(time.time()%EVERY_X_SECONDS) == 0:
-    #         print("receiving...")
-    #         ms.setClearToReceive(True)
-    #         while int(time.time()%EVERY_X_SECONDS) == 0:
-    #             ms.update()
-    #             # time.sleep(0.0001)
-    #         ms.setClearToReceive(False)
-    #         ms.update()
-    #         print("fin")
-    #     else:
-    #         time.sleep(0.1)
-    #         ms.update()
-        
 
 
     thread = threading.Thread(target=updateMs)
@@ -512,13 +476,10 @@ if __name__ == '__main__':
     time.sleep(1)
     ms.kill()
 
-    # on every new frame
     if args.ffmpeg:
-        while len(ms.frames) > 0:
-            # Update ffmpeg
-            ffmpegProc.stdin.write(ms.frames[0].transpose().view(np.float32).reshape(ms.frames[0].shape + (-1,)).flatten().tobytes())
-            del ms.frames[0]
         ffmpegProc.stdin.close()
+    if args.csv: 
+        csvFile.close()
         
     print(ms.samplingInfo())
 

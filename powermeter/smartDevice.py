@@ -1,3 +1,8 @@
+## @package smart device
+#  Documentation for this module.
+#
+#  More details.
+
 """Main File covering measurment system."""
 # !/usr/bin/python
 import sys
@@ -73,7 +78,10 @@ def time_format_ymdhms(dt):
     import datetime
     if (isinstance(dt, datetime.datetime) is False
             and isinstance(dt, datetime.timedelta) is False):
-        dt = datetime.datetime.fromtimestamp(dt)
+        try:
+            dt = datetime.datetime.fromtimestamp(dt)
+        except:
+            dt = datetime.datetime.now()
     return "%s.%s" % (
         dt.strftime('%Y.%m.%d %H:%M:%S'),
         str("%03i" % (int(dt.microsecond/1000)))
@@ -185,6 +193,8 @@ class SmartDevice(metaclass=ABCMeta):
     #: it has to be send with this prefix
     LINE_PREFIX = b'Info:'
     DATA_PREFIX = b'Data:'
+
+    buff = b''
 
     def __init__(self, name=None, deviceName=None, samplingRate=None, 
                     serialPort=None, portName=None, baudrate=2000000,
@@ -301,7 +311,9 @@ class SmartDevice(metaclass=ABCMeta):
         #: | default: ``0``
         #: | The explicit slot used for this device
         self.slot = 0
-
+        #: | If data should be send as raw values
+        self.rawValues = None
+        
         # Private members required
         self._sendFunc = None
         self._sysInfoCB = None
@@ -410,10 +422,12 @@ class SmartDevice(metaclass=ABCMeta):
         if self.conType == "serial":
             self.sendFunc = self._sendSerialMsg
             self._updateFunc = self._updateSerial
+            self._serialThread = None
 
         elif self.conType == "udp":
             self.sendFunc = self._sendSocketMsg
-            self._updateFunc = self._updateUDP
+            self._updateFunc = self._updateTCP
+
 
         elif self.conType == "tcp":
             self.sendFunc = self._sendSocketMsg
@@ -622,22 +636,6 @@ class SmartDevice(metaclass=ABCMeta):
         self._sysInfoCB = sysInfoCB
         self.sendFunc("{\"cmd\":\"info\"}")
         return self.TYPE
-
-    def getEnergy(self):
-        self.sendFunc(json.dumps({"cmd":"getEnergy"}))
-
-    def getPower(self):
-        self.sendFunc(json.dumps({"cmd":"getPower"}))
-
-    def getVoltage(self):
-        self.sendFunc(json.dumps({"cmd":"getVoltage"}))
-
-    def getCurrent(self):
-        self.sendFunc(json.dumps({"cmd":"getCurrent"})) 
-        
-    def setPublishInterval(self, intv):
-        cmd = {"cmd":"getCurrent","intv":intv}
-        self.sendFunc(json.dumps(cmd)) 
 
     def setMqttServer(self, server, user=None, pwd=None):
         """
@@ -870,11 +868,12 @@ class SmartDevice(metaclass=ABCMeta):
                 startCMD += ",\"slot\":[" + str(int(secondStart)) + "," + str(int(secondTotal)) + "]"
 
         if self.measurementInfo["cmdMeasure"] is not None:
-            startCMD += ",\"measures\":\"" + self.measurementInfo["cmdMeasure"] + "\""
-
+            startCMD += ",\"measures\":" + json.dumps(self.measurementInfo["cmdMeasure"])
         if ts is not None:
             startCMD += ",\"time\":" + str(ts)
-        
+        if self.rawValues is not None:
+            startCMD += ",\"rawVal\":" + json.dumps(self.rawValues)
+
         if ntpConfidenceMs is not None:
             startCMD += ",\"ntpConf\":" + str(int(ntpConfidenceMs))
 
@@ -883,7 +882,8 @@ class SmartDevice(metaclass=ABCMeta):
         
         # print(startCMD)
 
-        if self.verbose > 1: self.msPrint(startCMD)
+        if self.verbose > 1: self.msPrint("StartCMD: " + startCMD)
+        # startCMD = '{"cmd":"sample","payload":{"type":"TCP","rate":100,"measures":["CH0","CH1","CH2","CH3"]}}'
         self.sendFunc(startCMD)
         # self._requestChunk(1024)
         # self.sendFunc(startCMD)
@@ -926,6 +926,7 @@ class SmartDevice(metaclass=ABCMeta):
         if self._thread is not None:
             self._thread.join()
         if self._udpthread is not None:
+            self._udpThreadRunning = False
             self._udpthread.join()
         if self.conType == "stream":
             self.socket.close()
@@ -1017,9 +1018,9 @@ class SmartDevice(metaclass=ABCMeta):
         """
         # Wee need at least 2 floats of data
         if data is None or len(data) < self.MEASUREMENT_BYTES: return
-        encodedData = np.frombuffer(data, dtype=np.float32)
+        encodedData = np.frombuffer(data, dtype=self.measurementInfo["dtype"])
         encodedData.reshape((len(self.MEASUREMENTS),-1))
-        encodedData.dtype = [(m, np.float32) for m in self.MEASUREMENTS]
+        encodedData.dtype = [(m, self.measurementInfo["dtype"]) for m in self.MEASUREMENTS]
 
         if self._currentFrame is None:
             self._currentFrame = encodedData
@@ -1071,14 +1072,16 @@ class SmartDevice(metaclass=ABCMeta):
         self._samplesReceivedM = Value('i', 0)
         # We need a real new process (a real thread) to handle incoming serial data since serial rx buffer
         # only holds data for max 7ms at 8000Hz
-        self._procSleepTime = 0.05
+        self._procSleepTime = 0.005
+        if self.samplingRate > 8000: self._procSleepTime = 0.00001
         # On mac systems the CP21XX kernel driver only holds 1020 bytes so increase polling rate
         if platform.system() == 'Darwin': self._procSleepTime = 0.001
 
-        self.serial.timeout = 0.0002
+        self.serial.timeout = 0.00001
         if not self.serial.isOpen() and self.serial.open() is False:
             self.msPrint("Error Serial Port " + str(self.serial.port) + " was not opened correctly")
             return False
+
         return True
 
     
@@ -1125,7 +1128,10 @@ class SmartDevice(metaclass=ABCMeta):
         """
         self._udpPacketSize = 523
         # Init UDP socket for sending data
-        self._udpsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._udpsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+                
+        self._udpsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._udpsock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
         # Try setup udp server socket (this should not fail)
         try:
             self._udpsock.settimeout(3)
@@ -1136,7 +1142,11 @@ class SmartDevice(metaclass=ABCMeta):
             return False
         # socket timeout for sending msges
         # self._udpsock.settimeout(0.00001)
-        self._udpsock.settimeout(0.1)
+        self._udpsock.settimeout(0.001)
+        self.msPrint("UDP Thread started")
+        self._udpthread = threading.Thread(target=self._updateUDP, daemon=True)
+        self._udpThreadRunning = True
+        self._udpthread.start()
         return True
 
 
@@ -1199,20 +1209,22 @@ class SmartDevice(metaclass=ABCMeta):
 
     def _updateUDP(self):
         """Update the udp socket."""
-        # if not self.sampling: return
-        try:
-            self._receiveUDP()
-        # No data yet
-        except socket.timeout:
-            time.sleep(0.01)
-        # Catch other errors
-        except socket.error as err:
-            # Remote peer disconnected
-            self.msPrint(str(err))
-            self.msPrint("Detected remote disconnect")
-            # Do autoReconnect stuff
-            self.sampling = False
-            self.onConnectionReset(str(err))
+        
+        while self._udpThreadRunning:
+            # if not self.sampling: return
+            try:
+                self._receiveUDP()
+            # No data yet
+            except socket.timeout:
+                time.sleep(0.0001)
+            # Catch other errors
+            except socket.error as err:
+                # Remote peer disconnected
+                self.msPrint(str(err))
+                self.msPrint("Detected remote disconnect")
+                # Do autoReconnect stuff
+                self.sampling = False
+                self.onConnectionReset(str(err))
 
     def _updateTCP(self):
         """Update the tcp socket."""
@@ -1249,20 +1261,23 @@ class SmartDevice(metaclass=ABCMeta):
 
     def _updateSerial(self):
         """Update the serialport."""
-        # read line without blocking
-        try:  
-            line = self._serialQueueLine.get_nowait() # or q.get(timeout=.1)
-        except Empty:
-            pass
-        else: 
-            self._handleLine(line)
-        try:  
-            data = self._serialQueueData.get_nowait() # or q.get(timeout=.1)
-        except Empty:
-            pass
-        else: 
-            self.samplesReceived += 1;
-            self._handleData(data)
+        self._receiveSerial()
+
+        pass
+        # # read line without blocking
+        # try:  
+        #     line = self._serialQueueLine.get_nowait() # or q.get(timeout=.1)
+        # except Empty:
+        #     pass
+        # else: 
+        #     self._handleLine(line)
+        # try:  
+        #     data = self._serialQueueData.get_nowait() # or q.get(timeout=.1)
+        # except Empty:
+        #     pass
+        # else: 
+        #     self.samplesReceived += 1;
+        #     self._handleData(data)
 
     def update(self):
         """"
@@ -1295,65 +1310,70 @@ class SmartDevice(metaclass=ABCMeta):
 
         self._updateFunc()
         
-   
-    
+    def _receiveSerial2(self):
+        pass
+
     def _receiveSerial(self):
         """"
         Update function to handle incoming socketdata.
         This is performed in a thread to make sure it is called frequently.
         """
-        buff = b''
-        while True:
-            # Get the number of available bytes
-            try:
-                if self.serial.inWaiting() > 0 or len(buff) != 0:
-                    # print(serialPort.inWaiting())
-                    buff += self.serial.read(self.serial.inWaiting())
-                    linePre = buff.find(self.LINE_PREFIX)
-                    dataPre = buff.find(self.DATA_PREFIX)
-                    NL = buff.find(self.SERIAL_LINE_SEP)
-                    if linePre != -1 and dataPre == -1 or linePre != -1 and dataPre != -1 and linePre < dataPre:
-                        if NL != -1:
-                            line = buff[linePre:NL]
-                            buff = buff[NL+2:]
-                            self.lineQueue.put(line)
-                        else:
-                            self.msPrint("NL not found, should not happen")
-                    elif dataPre != -1 and linePre == -1 or linePre != -1 and dataPre != -1 and dataPre < linePre:
-                        buff = buff[dataPre:]
-                        if len(buff) < 12: continue
-                        lengthbuf = buff[5:7]
-                        length, = struct.unpack('<H', lengthbuf)
-                        if len(buff) < 11+length: continue
-                        packet = buff[7:11]
-                        packet, = struct.unpack('<I', packet)
-                        if self._lastPacket+1 != packet:
-                            self.msPrint("\033[93mMissed: " + str(packet-(self._lastPacket+1)) + " packets, fill with 0s.." + "\033[0m")
-                            if packet-(self._lastPacket+1) < 1000:
-                                self.dataQueue.put(b"\0" * int((packet-(self._lastPacket+1))*length))
-                        if len(buff) < 11+length: continue
-                        self._lastPacket = packet
-                        data = buff[11:11+length]
-                        self.samplesReceivedM.value += int(length/self.SINGLE_BYTES)
-                        self.dataQueue.put(data)
-                        buff = buff[11+length:]
-                else:
-                    time.sleep(self.procSleepTime)
-                # self.msPrint(numbytes)
-            except serial.SerialException as e:
-                pass
-                #There is no new data from serial port
-            except TypeError as e:
-                #Disconnect of USB->UART occured
-                self.msPrint("Critical Serial error")
-                self.errorDetected = True
-                return
-            except OSError as e:
-                #Disconnect of USB->UART occured
-                self.msPrint("OS error")
-                self.errorDetected = True
-                return
-        time.sleep(0.001)
+        # Get the number of available bytes
+        try:
+            bytes_ = self.serial.inWaiting()
+            if bytes_ > 0 or len(self.buff) != 0:
+                if bytes_ > 0:
+                    self.buff += self.serial.read(bytes_)
+                
+                linePre = self.buff.find(self.LINE_PREFIX)
+                dataPre = self.buff.find(self.DATA_PREFIX)
+                NL = self.buff.find(self.SERIAL_LINE_SEP)
+                if linePre != -1 and dataPre == -1 or linePre != -1 and dataPre != -1 and linePre < dataPre:
+                    if NL != -1:
+                        line = self.buff[linePre:NL]
+                        self.buff = self.buff[NL+2:]
+                        self._handleLine(line)
+                        # self._lineQueue.put(line)
+                    else:
+                        self.msPrint("NL not found, should not happen")
+                elif dataPre != -1 and linePre == -1 or linePre != -1 and dataPre != -1 and dataPre < linePre:
+                    self.buff = self.buff[dataPre:]
+                    if len(self.buff) < 12: return
+                    lengthbuf = self.buff[5:7]
+                    length, = struct.unpack('<H', lengthbuf)
+                    if len(self.buff) < 11+length: return
+                    packet = self.buff[7:11]
+                    packet, = struct.unpack('<I', packet)
+                    if self._lastPacket+1 != packet:
+                        self.msPrint("\033[93mMissed: " + str(packet-(self._lastPacket+1)) + " packets, fill with 0s.." + "\033[0m")
+                        if packet-(self._lastPacket+1) < 1000:
+                            data = b"\0" * int((packet-(self._lastPacket+1))*length)
+                            self._handleData(data)
+
+                    if len(self.buff) < 11+length: return
+                    self._lastPacket = packet
+                    data = self.buff[11:11+length]
+                    self._handleData(data)
+                    # self.dataQueue.put(data)
+                    self.buff = self.buff[11+length:]
+            else:
+                time.sleep(self._procSleepTime)
+            # self.msPrint(numbytes)
+        # Timeout
+        except serial.SerialException as e:
+            pass
+            #There is no new data from serial port
+        except TypeError as e:
+            #Disconnect of USB->UART occured
+            self.msPrint("Critical Serial error")
+            self.errorDetected = True
+            return
+        except OSError as e:
+            #Disconnect of USB->UART occured
+            self.msPrint("OS error")
+            self.errorDetected = True
+            return
+        # time.sleep(0.001)
 
     def _receiveUDP(self):
         """Receive chunk of UDP data"""
@@ -1378,17 +1398,18 @@ class SmartDevice(metaclass=ABCMeta):
                 return
             if packet < self._lastPacket+1:
                 self.msPrint("\033[93mReceived old packet, discarding\033[0m")
-                return
-            if self._lastPacket+1 != packet:
-                self.msPrint("\033[93mMissed: " + str(packet-(self._lastPacket+1)) + " packets, fill with 0s..\033[0m")
+            # This is a packet from the future, we nee to fill with 0s
+            elif self._lastPacket+1 != packet:
+                self.msPrint("\033[93mMissed: " + str(packet-(self._lastPacket+1)) + " packets, fill with 0s.." + "\033[0m")
                 self._handleData(b"\0" * int((packet-(self._lastPacket+1))*length))
-            self._lastPacket = packet
-            self._handleData(data)
-            self.samplesReceived += int(length/self.MEASUREMENT_BYTES)
+            # This is regular packet + future packet \TODO: test
+            if packet >= self._lastPacket+1:
+                self._lastPacket = packet
+                # Extract data and handle data
+                self._handleData(data)
+                self.samplesReceived += int(length/self.MEASUREMENT_BYTES)
         else:
             self.msPrint("\033[93mStrange UDP: " + str(newData) + "\033[0m")
-        # CPU intensive task
-        time.sleep(0.001)
 
     def _receiveStream(self):
         """Receive stream data"""
@@ -1400,7 +1421,7 @@ class SmartDevice(metaclass=ABCMeta):
         # No data yet
         except socket.timeout:
             # self.msPrint("timeout: ")
-            time.sleep(0.01)
+            time.sleep(0.0001)
         # Catch other errors
         except socket.error as err:
             # Remote peer disconnected
@@ -1502,7 +1523,7 @@ class SmartDevice(metaclass=ABCMeta):
         ``updateInThread`` vs ``device.update()``.
         """
         # Drastically reduces CPU intensity when timeout is used here
-        ready_to_read, ready_to_write, in_error = select.select([self.socket], [], [self.socket], 0.1)
+        ready_to_read, ready_to_write, in_error = select.select([self.socket], [], [self.socket], 0.01)
         if len(ready_to_read) > 0:
             self._readSocket()
             # Handle all incoming data
@@ -1521,173 +1542,6 @@ class SmartDevice(metaclass=ABCMeta):
 
                 if self.prefix is not None: break # we need data
             
-
-    # def _receiveSocket2(self):
-    #     #  Only continue if sth ready to read is there
-    #     ready_to_read, ready_to_write, in_error = select.select([self.socket], [], [self.socket], 0)
-    #     if len(ready_to_read) > 0:
-    #         #  Try to read data
-    #         self._readSocket()
-    #     if len(self.recBuffer) > 0:
-    #         # If prefis has not been found
-    #         if self.prefix is None:
-    #             self._processPrefix()
-    #         # If line prefix has been found, we need to find \n
-    #         if self.prefix is self.LINE_PREFIX:
-    #             self._processLine()
-    #         # If data prefix has been found, length is in header
-    #         elif self.prefix is self.DATA_PREFIX:
-    #             self._processData()
-
-    # state = 0
-    # STATE_IDLE = 0
-    # STATE_LINE = 1
-    # STATE_DATA = 2
-    # STATE_DATA_D = 3
-    # def _receiveSocket3(self):
-    #     chunk = self._recvSocket(5)
-    #     if chunk is None: return
-    #     self.recBuffer += chunk
-    #     # Look for line prefix
-    #     index = self.recBuffer.find(self.LINE_PREFIX)
-    #     while index >= 0:
-    #         self.recBuffer = self.recBuffer[index+len(self.LINE_PREFIX):]
-    #         indexNL = self.recBuffer.find(b'\x0a')
-    #         if indexNL < 0:
-    #             self.recBuffer += self._recvSocketUntil(b'\x0a')
-    #             indexNL = self.recBuffer.find(b'\x0a')
-    #         line = self.recBuffer[:indexNL]
-    #         self.recBuffer = self.recBuffer[indexNL+1:]
-    #         self._handleLine(line)
-    #         index = self.recBuffer.find(self.LINE_PREFIX)
-        
-    #     # Look for data prefix
-    #     index = self.recBuffer.find(self.DATA_PREFIX)
-    #     while index >= 0:
-    #         self.recBuffer = self.recBuffer[index+len(self.DATA_PREFIX):]
-    #         bufLen = len(self.recBuffer)
-    #         if bufLen < 6:
-    #             self.recBuffer += self._recvSocket(6)
-    #         lengthAndPacketBuf = self.recBuffer[:6]
-    #         self.recBuffer = self.recBuffer[6:]
-    #         if lengthAndPacketBuf is None: return
-    #         length, = struct.unpack('<H', lengthAndPacketBuf[:2])
-    #         packet, = struct.unpack('<I', lengthAndPacketBuf[2:])
-    #         if self._lastPacket+1 != packet:
-    #             self.msPrint("\033[93mMissed: " + str(packet-(self._lastPacket+1)) + " packets, fill with 0s.." + "\033[0m")
-    #             self._handleData(b"\0" * int((packet-(self._lastPacket+1))*length))
-    #         self._lastPacket = packet
-    #         bufLen = len(self.recBuffer)
-    #         if bufLen < length:
-    #             chunk = None
-    #             while chunk is None:
-    #                 chunk = self._recvSocket(length-bufLen)
-    #             self.recBuffer += chunk
-    #         data = self.recBuffer[:length]
-    #         self.recBuffer = self.recBuffer[length:]
-    #         self._handleData(data)
-    #         self.samplesReceived += int(length/self.MEASUREMENT_BYTES)
-
-    #         index = self.recBuffer.find(self.DATA_PREFIX)
-
-
-
-    # def _receiveSocket2(self):
-    #     """This is a nonblicking receive approach."""
-    #     if self.state == self.STATE_IDLE:
-    #         # prefix = self._recvSocket(5)
-    #         prefix = self._recvSocketUntil(b':')
-    #         if prefix is None: return
-    #         if self.LINE_PREFIX in prefix:
-    #             self.state = self.STATE_LINE
-    #         elif self.DATA_PREFIX in prefix:
-    #             self.state = self.STATE_DATA
-    #         else:
-    #             self.msPrint("\033[93mstrange TCP: " + str(prefix) + "\033[0m")
-    #     if self.state == self.STATE_LINE:
-    #         line = self._recvSocketUntil(b'\x0a')
-    #         if line is None: return
-    #         self._handleLine(line)
-    #         self.state = self.STATE_IDLE
-    #     elif self.state == self.STATE_DATA:
-    #         lengthAndPacketBuf = self._recvSocket(6)
-    #         if lengthAndPacketBuf is None: return
-    #         self.length, = struct.unpack('<H', lengthAndPacketBuf[:2])
-    #         self.packet, = struct.unpack('<I', lengthAndPacketBuf[2:])
-    #         if self._lastPacket+1 != self.packet:
-    #             self.msPrint("\033[93mMissed: " + str(self.packet-(self._lastPacket+1)) + " packets, fill with 0s.." + "\033[0m")
-    #             self._handleData(b"\0" * int((self.packet-(self._lastPacket+1))*self.length))
-    #         self._lastPacket = self.packet
-    #         self.state = self.STATE_DATA_D
-    #     if self.state == self.STATE_DATA_D:
-    #         try:
-    #             data = self._recvSocket(self.length)
-    #         except:
-    #             self.msPrint("\033[93mMissed: something\033[0m")
-    #             self.state = self.STATE_IDLE
-    #             return
-
-    #         if data is None: return
-    #         self._handleData(data)
-    #         self.samplesReceived += int(self.length/self.MEASUREMENT_BYTES)
-    #         self.state = self.STATE_IDLE
-
-
-    # def _recvSocket2(self, count):
-    #     chunks = []
-    #     bytes_recd = 0
-    #     while bytes_recd < count:
-    #         chunk = self.socket.recv(min(count - bytes_recd, 2048))
-    #         if chunk == b'':
-    #             raise RuntimeError("socket connection broken")
-    #             self.onConnectionReset()
-    #             return None
-    #         chunks.append(chunk)
-    #         bytes_recd = bytes_recd + len(chunk)
-    #     return b''.join(chunks)
-
-    # def _recvSocket(self, count):
-    #     ready_to_read, ready_to_write, in_error = select.select([self.socket], [], [self.socket], 0)
-    #     if len(ready_to_read) > 0:
-    #         try:
-    #             self.buffer += self.socket.recv(count-len(self.buffer))
-    #         except ConnectionResetError:
-    #             self.onConnectionReset()
-    #             return None
-    #         if len(self.buffer) == count:
-    #             buf = self.buffer
-    #             self.buffer = b''
-    #             return buf
-    #     return None
-
-    # def _recvSocketUntilNewLine2(self):
-    #     while True:
-    #         try:
-    #             c = self.socket.recv(1)
-    #         except ConnectionResetError:
-    #             self.onConnectionReset()
-    #             return None
-    #         self.buffer += c
-    #         if c == b'\x0a':
-    #             buf = self.buffer
-    #             self.buffer = b''
-    #             return buf
-        
-    # def _recvSocketUntil(self, char):
-    #     ready_to_read, ready_to_write, in_error = select.select([self.socket], [], [self.socket], 0)
-    #     while len(ready_to_read) > 0:
-    #         try:
-    #             c = self.socket.recv(1)
-    #         except ConnectionResetError:
-    #             self.onConnectionReset()
-    #             return None
-    #         self.buffer += c
-    #         if c == char:
-    #             buf = self.buffer
-    #             self.buffer = b''
-    #             return buf
-    #         ready_to_read, ready_to_write, in_error = select.select([self.socket], [], [self.socket], 0)
-    #     return None
 
     def onConnectionReset(self, reason="unknown"):
         """
@@ -1716,6 +1570,7 @@ class SmartDevice(metaclass=ABCMeta):
                         DEBUG,WARNING or ERROR message. See :class:`LogLevel<powermeter.smartDevice.LogLevel>` enum.
         :type   msg:    str, default: unknown
         """
+        if len(msg) < 1: return
         prefix = ""
         endFix = ""
         try:

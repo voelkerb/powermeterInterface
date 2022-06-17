@@ -12,6 +12,11 @@ Use the files in this repo to
 
 # How to use?
 
+Clone this repo with:
+```bash
+git clone --recurse-submodules git@github.com:voelkerb/powermeterInterface.git
+```
+
 Each script in the top level folder (```getInfo```, ```getLog```, ```interface``` and ```update.py```) give the possibility to select one or multiple power- or smartmeter devices in your network.
 
 E.g. if you call: 
