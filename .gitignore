@@ -1,6 +1,7 @@
 **/.vscode/
 
 **/*.mkv
+**/*.csv
 
 **/tmp_*
 
