@@ -1,5 +1,6 @@
 """Main File covering self build measurment system."""
 # !/usr/bin/python
+from imghdr import tests
 import sys
 import os
 
@@ -48,7 +49,7 @@ class SmartBlueline(SmartDevice):
                        socketObject=None, ip=None, port=54321, stream=False,
                        useUDP=False, portUDP=54323, rawValues=False,
                        updateInThread=False, directInit=True,
-                       flowControl=False,
+                       flowControl=False, cycleBased=False, simulation=-1,
                        logLevel=LogLevel.INFO, verbose=0, logger=print):
         """
         Init the measurement module.
@@ -73,13 +74,13 @@ class SmartBlueline(SmartDevice):
                             socketObject=socketObject, ip=ip, port=port, stream=stream,
                             useUDP=useUDP, portUDP=portUDP,
                             updateInThread=updateInThread, directInit=directInit,
-                            flowControl=flowControl,
+                            flowControl=flowControl, 
                             logLevel=logLevel, verbose=verbose, logger=logger)
 
         if samplingRate == None: self.samplingRate = self.DEFAULT_SR
        
         self.measurementInfo = self.AVAILABLE_MEASURES[0]
-        
+        self.cycleBased = cycleBased
             # Look what measures we need
         if measures is not None:
             # make list if it is just a string with , spearated channelnames
@@ -116,10 +117,15 @@ class SmartBlueline(SmartDevice):
         self.scaling = {}
         self._multiply = {}
         self.refTemp = 0
+        self.simulation = simulation
+
 
         self.MEASUREMENTS = self.measurementInfo["keys"]
         self.MEASUREMENT_BYTES = self.measurementInfo["bytes"]
-
+    
+    def setClassBlueline(self):
+        pass
+    
     def _handleCommand(self, cmd, di):
         super()._handleCommand(cmd, di)
         if cmd == "sample":
@@ -151,47 +157,94 @@ class SmartBlueline(SmartDevice):
     
     def getFrame(self, i):
         """Get a frame, max convert from raw to float"""
+        cycleIdx = -1
+        frame = None
         if len(self.frames) > i:
+            frame = self.frames[i][:]
             if self.rawValues:
-                dt = {'names':self.frames[i].dtype.names, 'formats':[np.float32]*len(self.MEASUREMENTS)}
+                if self.cycleBased:
+                    x = np.where(frame[self.MEASUREMENTS[0]] == 1)[0]
+                    if len(x) != 0:
+                        cycleIdx = x[0]
+                        # Check others
+                        for _c,v in zip(self.MEASUREMENTS,[1,2,3,4]):
+                            if frame[_c][cycleIdx] != v:
+                                cycleIdx = -1
+                                break
+                dt = {'names':frame.dtype.names, 'formats':[np.float32]*len(self.MEASUREMENTS)}
                 X = np.empty((len(self.frames[i]),), dtype=dt)
-                for m in self.MEASUREMENTS: X[m] = self.frames[i][m]
+                for m in self.MEASUREMENTS: X[m] = frame[m]
                 for m in self.MEASUREMENTS: X[m] = (X[m]-self.offsets[m])*self._multiply[m]+self.refTemp
-                return X
-            return self.frames[i]
-        return None
+                frame = X
+            else:
+                if self.cycleBased:
+                    x = np.where(frame[self.MEASUREMENTS[0]] == -100.0)[0]
+                    if len(x) != 0:
+                        cycleIdx = x[0]
+                        # Check others
+                        for _c,v in zip(self.MEASUREMENTS,[-100.0,-101.0,-102.0,-103.0]):
+                            if frame[_c][cycleIdx] != v:
+                                cycleIdx = -1
+                                break
+        return frame, cycleIdx
 
-    def getEnergy(self):
-        """Get energy of meter"""
-        self.sendFunc(json.dumps({"cmd":"getEnergy"}))
+    __tmpMsg = ""
+    def __start(self, msg):
+        self.__tmpMsg = msg
 
-    def getPower(self):
-        """Get power of meter"""
-        self.sendFunc(json.dumps({"cmd":"getPower"}))
+    def start(self, **args):
+        temp = self.sendFunc            
+        self.sendFunc = self.__start
+        super().start(**args)
+        # Add stuff specific for this module trigger 
+        dic = json.loads(self.__tmpMsg)
+        if self.cycleBased:
+            dic["payload"]["indicateTrig"] = True
+        if self.simulation > 0:
+            dic["payload"]["simu"] = self.simulation
 
-    def getVoltage(self):
-        """Get voltage of meter"""
-        self.sendFunc(json.dumps({"cmd":"getVoltage"}))
+        # Restore send func
+        self.sendFunc = temp
+        self.sendFunc(json.dumps(dic))
 
-    def getCurrent(self):
-        """Get current of meter"""
-        self.sendFunc(json.dumps({"cmd":"getCurrent"})) 
-        
-    def calibrate(self, parameter):
+    def setDeviceType(self, devType):
         r"""
         Set calibration coefficients.
 
-        :param parameter: dictionary with calibration parameter as \{'v_l1':0.99,'i_l1':1.01 ... \}
-        :type  parameter: dict
+        :param parameter: dictionary with scaling parameter as list
+        :type  parameter: list
         """
-        if all([vi in list(parameter.keys()) for vi in list(VOLTAGE[1:]+CURRENT[1:])]):
-            calDict = {
-                "cmd":"calibration",
-                "cal":[parameter[key] for key in [VOLTAGE[1], CURRENT[1], VOLTAGE[2], CURRENT[2], VOLTAGE[3], CURRENT[3]]]
-            }
-            self.sendFunc(json.dumps(calDict)) 
-        else:
-            self.msPrint("Cannot use given parameters to calibrate")
+        if devType not in ["4T", "4P"]:
+            self.msPrint("Error:Unsupported device type: " + str(devType))
+
+        self.sendFunc(json.dumps({
+            "cmd":"type",
+            "type":devType
+        })) 
+
+    def setScaling(self, parameter):
+        r"""
+        Set calibration coefficients.
+
+        :param parameter: dictionary with scaling parameter as list
+        :type  parameter: list
+        """
+        self.sendFunc(json.dumps({
+            "cmd":"scaling",
+            "cal":parameter
+        })) 
+    
+    def setOffset(self, parameter):
+        r"""
+        Set calibration coefficients.
+
+        :param parameter: dictionary with offset parameter as list
+        :type  parameter: list
+        """
+        self.sendFunc(json.dumps({
+            "cmd":"offset",
+            "cal":parameter
+        })) 
     
 
 
@@ -204,8 +257,6 @@ def initParser():
                         help="Hostname or IP address of device e.g. blueline001.local")
     parser.add_argument("--port", type=int, default=54321,
                         help="Port, default: 54321.")
-    parser.add_argument("--phase", type=int, choices=[None, 1, 2, 3], default=None,
-                        help="Phase to measure. A Blueline is typically connected to L1, L2 and L3")
     # parser.add_argument("--measures", type=str, choices=[",".join(measure['keys']) for measure in SmartBlueline.AVAILABLE_MEASURES],
     parser.add_argument("--measures", type=str,
                         default=",".join(SmartBlueline.AVAILABLE_MEASURES[0]['keys']),
@@ -223,6 +274,10 @@ def initParser():
                         help="If data should be sent as 16 bit integers over channel, effectively devides data througput by 2")
     parser.add_argument("--plot", action="store_true",
                         help="If data should be plotted")
+    parser.add_argument("--cycleBased", action="store_true",
+                        help="If data should be stored cycle based")
+    parser.add_argument("--simulation", type=int, default=-1,
+                        help="Simulation mode, int represents milliseconds of cycle, -1 to disable")
     parser.add_argument("--ffmpeg", action="store_true",
                         help="If data should be written to mkv file. You can specify filename with --filename")
     parser.add_argument("--csv", action="store_true",
@@ -258,7 +313,7 @@ if __name__ == '__main__':
     ms = SmartBlueline(ip=args.host, port=args.port, useUDP=args.udp,
                   portName=args.serial, baudrate=args.baudrate, measures=args.measures.split(','),
                   verbose=args.verbose, updateInThread=False, name="blueline", rawValues=args.raw,
-                  samplingRate=args.samplingrate, directInit=True)
+                  samplingRate=args.samplingrate, cycleBased=args.cycleBased, simulation=args.simulation, directInit=True)
     ms.frameSize = max(1,int(ms.samplingRate/50))
 
     # Catch control+c
@@ -338,28 +393,37 @@ if __name__ == '__main__':
                 mapping[key]["curve"] = curve
                 mapping[key]["plot"].addItem(curve)
 
-    # Update liva plot with seconds counter
+    # Update live plot with seconds counter
     start = 0
+    end = 0
     theData = None
     def updatePlot():
-        global theData, curves, start, running, plotQueue
+        global theData, curves, start, running, plotQueue, end
         while not plotQueue.empty():
             frame = plotQueue.get()
             plotQueue.task_done()
-            newFrameLen = len(frame)
-            if theData is None: theData = frame
-            else: theData = np.concatenate([theData, frame], axis=0)
-            theData = theData[-maxPoints:]
-            for key in ms.MEASUREMENTS: mapping[key]["data"] = theData[key]
-            dlen = len(theData)
-            x = np.linspace(start, start + dlen/ms.samplingRate, dlen)
-            start += float(newFrameLen/ms.samplingRate)
-            x = x[0:dlen]
-            for key in ms.MEASUREMENTS:
-                mapping[key]["curve"].setData(x, mapping[key]["data"][0:len(x)])
+            if frame is None:
+                # Indication of new cycle remove all existing data
+                theData = None
+                start = 0
+                end = 0
+            else:
+                newFrameLen = len(frame)
+                end += newFrameLen/ms.samplingRate
+                if theData is None: theData = frame
+                else: theData = np.concatenate([theData, frame], axis=0)
+                theData = theData[-maxPoints:]
+                for key in ms.MEASUREMENTS: mapping[key]["data"] = theData[key]
+                dlen = len(theData)
+                myStart = end-(dlen/ms.samplingRate)
+                x = np.linspace(myStart, end, dlen)
+                start += float(newFrameLen/ms.samplingRate)
+                x = x[0:dlen]
+                for key in ms.MEASUREMENTS:
+                    mapping[key]["curve"].setData(x, mapping[key]["data"][0:len(x)])
 
     #b Construct the ffmpeg call for a single device
-    def constructFFMPEGCall(ms, path=None):
+    def constructFFMPEGCall(ms, path=None, cycle=-1):
         systemCall = "ffmpeg -hide_banner -f f32le -ar " + str(ms.samplingRate) + " -guess_layout_max 0 -ac "
         systemCall += str(len(ms.MEASUREMENTS)) + " -i pipe:0 -c:a wavpack "
         meta = " -metadata:s:a:0"
@@ -376,48 +440,86 @@ if __name__ == '__main__':
             else:
                 thePath = path.rstrip(".mkv") + ".mkv"
         else:
-            thePath = ms.name + ".mkv"
+            ts = ms.getStartTs()
+            if ts is None: ts = time.time()
+            filename = ms.name + "_" + time_format_ymdhms(ts).replace(".","_").replace(":","_").replace("/","_").replace(" ","__") + ".mkv"
+
+        if cycle != -1: thePath = thePath.split(".mkv")[0] + "_cycle_" + str(cycle) + ".mkv"
+        
         systemCall += thePath
         return systemCall
-    
+
+    def constructCSVWriter(ms, path=None, cycle=-1):
+        # Embed timestamp in outputfilename
+        ts = ms.getStartTs()
+        if ts is None: ts = time.time()
+        filename = ms.deviceName + "_" + time_format_ymdhms(ts).replace(".","_").replace(":","_").replace("/","_").replace(" ","__") + ".csv"
+        # given filename
+        if args.filename is not None: filename = args.filename
+        # Make sure csv format
+        if not filename.find(".csv"): filename.split(".")[0] + ".csv"
+        if cycle != -1: filename = filename.split(".csv")[0] + "_cycle_" + str(cycle) + ".csv"
+        if args.verbose: print("Storing CSV data to: " + filename)
+        csvFile = open(filename, 'w')
+        csvWriter = csv.writer(csvFile, lineterminator='\n')
+        return csvWriter, csvFile
+
+    cycles = -1
     csvFile = None
     # Update the measurement system
     def updateMs():
-        global ffmpegProc, running, ms, plotQueue, csvFile
+        global ffmpegProc, running, ms, plotQueue, csvFile, cycles
         # Init ffmpeg
+        if args.cycleBased: cycles = 0
         if args.ffmpeg:
-            FNULL = open(os.devnull, 'w', newline='', encoding='utf-8')
-            ffmpegCall = constructFFMPEGCall(ms, path=args.filename)
+            ffmpegCall = constructFFMPEGCall(ms, path=args.filename, cycle=cycles)
             ffmpegProc = subprocess.Popen(ffmpegCall, shell=True, stdin=subprocess.PIPE)
         if args.csv:
-            # Embed timestamp in outputfilename
-            ts = ms.startTs
-            if ts is None: ts = time.time()
-            filename = ms.deviceName + "_" + time_format_ymdhms(ts).replace(".","_").replace(":","_").replace("/","_").replace(" ","__") + ".csv"
-            # given filename
-            if args.filename is not None: filename = args.filename
-            # Make sure csv format
-            if not filename.find(".csv"): filename.split(".")[0] + ".csv"
-            if args.verbose: print("Storing CSV data to: " + filename)
-            csvFile = open(filename, 'w')
-            csvWriter = csv.writer(csvFile, lineterminator='\n')
+            csvWriter, csvFile = constructCSVWriter(ms, path=args.filename, cycle=cycles)
             csvWriter.writerow(ms.MEASUREMENTS)
+            
         while running or len(ms.frames):
             # Update ms
             if running: ms.update()
             # on every new frame
             while len(ms.frames) > 0:
                 # frame = ms.frames[0]
-                frame = ms.getFrame(0)
-                # Update ffmpeg
-                if args.ffmpeg:
-                    ffmpegProc.stdin.write(frame.transpose().view(np.float32).reshape(frame.shape + (-1,)).flatten().tobytes())
-                if args.csv:
-                    csvWriter.writerows(frame)
+                frame, cycleIndex = ms.getFrame(0)
+                
+                cycleSplit = [frame]
+                if cycleIndex != -1:#
+                    print("Cycle in data")
+                    cycleSplit = [frame[:cycleIndex], frame[cycleIndex+1:]]
 
-                # update plot using Queue
-                if plotQueue is not None: plotQueue.put(frame)
-                # remove frame
+                for i, frame in enumerate(cycleSplit):
+                    
+                    # New cycle here
+                    if i > 0:
+                        cycles += 1
+                        # Construct new ffmpeg file
+                        if args.ffmpeg:
+                            # Close current process
+                            ffmpegProc.stdin.close()
+                            # Start new one with new filename
+                            ffmpegCall = constructFFMPEGCall(ms, path=args.filename, cycle=cycles)
+                            ffmpegProc = subprocess.Popen(ffmpegCall, shell=True, stdin=subprocess.PIPE)
+                        # Construct new csv file
+                        if args.csv:
+                            csvFile.close()
+                            csvWriter, csvFile = constructCSVWriter(ms, path=args.filename, cycle=cycles)
+                            csvWriter.writerow(ms.MEASUREMENTS)
+                        # Add none to queue to indicate cycle to plot thread
+                        if plotQueue is not None: plotQueue.put(None)
+
+                    # Update ffmpeg
+                    if args.ffmpeg:
+                        ffmpegProc.stdin.write(frame.transpose().view(np.float32).reshape(frame.shape + (-1,)).flatten().tobytes())
+                    if args.csv:
+                        csvWriter.writerows(frame)
+
+                    # update plot using Queue
+                    if plotQueue is not None: plotQueue.put(frame)
+
                 del ms.frames[0]
             if args.serial:
                 time.sleep(0.00001)
@@ -425,7 +527,7 @@ if __name__ == '__main__':
                 time.sleep(0.001)
             
     # global plot variables required
-    if args.plot:
+    if args.plot and running:
         # Setup main GUI
         app = QtGui.QApplication([])
         # Enable antialiasing for prettier plots
@@ -434,53 +536,57 @@ if __name__ == '__main__':
         # basic config
         pg.setConfigOption('background', 'w')
         pg.setConfigOption('foreground', 'k')
+        # pg.setConfigOption('foreground', 'w')
+        # pg.setConfigOption('background', 'k')
         win = pg.GraphicsWindow(title="Live Data")
         win.resize(1000, 600)
         # define plot size depending on sr
-        maxTime = 0.1
-        if ms.samplingRate <= 8000: maxTime = 0.2
-        if ms.samplingRate <= 4000: maxTime = 0.5
-        if ms.samplingRate <= 2000: maxTime = 1.0
-        if ms.samplingRate <= 1000: maxTime = 2.0
-        if ms.samplingRate <= 100: maxTime = 10.0
-        if ms.samplingRate <= 10: maxTime = 20.0
+        if args.cycleBased:
+            maxTime = 100
+        else:
+            maxTime = 0.1
+            if ms.samplingRate <= 10: maxTime = 20.0
+            elif ms.samplingRate <= 100: maxTime = 10.0
+            elif ms.samplingRate <= 1000: maxTime = 2.0
+            elif ms.samplingRate <= 2000: maxTime = 1.0
+            elif ms.samplingRate <= 4000: maxTime = 0.5
+            elif ms.samplingRate <= 8000: maxTime = 0.2
         maxPoints = int(ms.samplingRate*maxTime)
 
-
-
+    # Queue to hold new frames for plotting
     plotQueue = None
-    if args.plot: plotQueue = Queue(maxsize=0)
-
+    if args.plot: plotQueue = Queue(maxsize=10)
+    # Start sampling data
     ms.start()
-
-
+    # Thread to update the MS
     thread = threading.Thread(target=updateMs)
     thread.start()
 
-
-    # Plotting stuff
-    if args.plot:
+    # Start QT application gui. use app.quit() to cancel this in some event
+    if args.plot and running:
         initPlot()
         timer = QtCore.QTimer()
         timer.timeout.connect(updatePlot)
         # Update with 50Hz
+        # Make sure that framesize is never below, otherwise
+        # queue is not emptied quick enough 
         timer.start(20)
         QtGui.QApplication.instance().exec_()
         running = False
 
     # Waits for update thread to complete
     thread.join()
-
+    # stop sampling process
     ms.stop()
-
+    # Wait for devices to really stop before killing them
     time.sleep(1)
     ms.kill()
-
+    # Close remaining open files
     if args.ffmpeg:
         ffmpegProc.stdin.close()
     if args.csv: 
         csvFile.close()
-        
+    # Print sampling info
     print(ms.samplingInfo())
 
     print("Bye Bye from " + str(os.path.basename(__file__)))

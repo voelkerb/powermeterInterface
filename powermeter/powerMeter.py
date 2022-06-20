@@ -117,6 +117,9 @@ class PowerMeter(SmartDevice):
         self.MEASUREMENTS = self.measurementInfo["keys"]
         self.MEASUREMENT_BYTES = self.measurementInfo["bytes"]
 
+    def setClassPowerMeter(self):
+        pass
+
     def defaultSettings(self):
         self.samplingRate = self.DEFAULT_SR
         self.measurementInfo = self.AVAILABLE_MEASURES[0]
@@ -382,23 +385,27 @@ if __name__ == '__main__':
 
     # Update liva plot with seconds counter
     start = 0
+    end = 0
     theData = None
     def updatePlot():
-        global theData, curves, start, running, plotQueue
+        global theData, curves, start, running, plotQueue, end
         while not plotQueue.empty():
             frame = plotQueue.get()
             plotQueue.task_done()
             newFrameLen = len(frame)
+            end += newFrameLen/ms.samplingRate
             if theData is None: theData = frame
             else: theData = np.concatenate([theData, frame], axis=0)
             theData = theData[-maxPoints:]
             for key in ms.MEASUREMENTS: mapping[key]["data"] = theData[key]
             dlen = len(theData)
-            x = np.linspace(start, start + dlen/ms.samplingRate, dlen)
+            myStart = end-(dlen/ms.samplingRate)
+            x = np.linspace(myStart, end, dlen)
             start += float(newFrameLen/ms.samplingRate)
             x = x[0:dlen]
             for key in ms.MEASUREMENTS:
                 mapping[key]["curve"].setData(x, mapping[key]["data"][0:len(x)])
+                
 
     #b Construct the ffmpeg call for a single device
     def constructFFMPEGCall(ms, path=None):

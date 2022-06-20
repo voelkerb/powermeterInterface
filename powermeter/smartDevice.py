@@ -143,7 +143,7 @@ class LogLevel(Enum):
         return [l.lower() for l in list(LogLevel)]
 
 
-class SmartDevice(metaclass=ABCMeta):
+class SmartDevice(object):
     r"""
     Metaclass of a device that samples data.
     
@@ -251,6 +251,7 @@ class SmartDevice(metaclass=ABCMeta):
         #: | default: :attr:`UNKNOWN<powermeter.smartDevice.SmartDevice.UNKNOWN>` 
         #: | The name of the sampling device 
         self.deviceName = self.UNKNOWN
+        self.deviceSpecificType = ""
         self.MEASUREMENT_BYTES = 2*self.SINGLE_VALUE_BYTES
         #: | default: ``[]``
         #: | Array holding frames of sampling data (recarrays). Set framesize to specify how much samples are in each frame
@@ -1604,6 +1605,9 @@ class SmartDevice(metaclass=ABCMeta):
         # No matter what, set name and type if not set yet
         if "type" in di:
             self.TYPE = di["type"]
+        if "deviceType" in di:
+            self.deviceSpecificType = di["deviceType"]
+        
         if "name" in di:
             self.deviceName = di["name"]
             # If no name set, set it to standard name

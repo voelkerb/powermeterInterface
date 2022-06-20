@@ -6,6 +6,8 @@ import time
 import argparse
 import signal
 import struct
+
+from powermeter.smartBlueline import SmartBlueline
 from .powerMeter import PowerMeter
 from .smartMeter import SmartMeter
 from .smartDevice import SmartDevice
@@ -18,7 +20,7 @@ from pathlib import Path
 sys.path.append(str(Path('.').absolute().parent))
 from network.network.mDNS import mDNS
 
-possibleTypes = [PowerMeter.TYPE, SmartMeter.TYPE, SmartDevice.TYPE]
+possibleTypes = [PowerMeter.TYPE, SmartMeter.TYPE, SmartDevice.TYPE, SmartBlueline.TYPE]
 
 def printRed(string, end="\n"):
     if not isinstance(string, str): string = str(string)

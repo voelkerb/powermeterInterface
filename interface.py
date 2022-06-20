@@ -3,6 +3,8 @@ import sys
 import time
 import re
 import argparse
+from powermeter.smartBlueline import SmartBlueline
+from powermeter.smartDevice import SmartDevice
 from powermeter.powerMeter import PowerMeter, RGBColor
 from powermeter.smartMeter import SmartMeter
 from powermeter.smartDevice import LogLevel, VOLTAGE, CURRENT
@@ -439,6 +441,22 @@ def setLEDs():
         if ms.TYPE == PowerMeter.TYPE and ms.hasSensorBoard():
             ms.setLEDs(pattern,duration,fgColor,bgColor)
 
+def devSpecific(funcName):
+    print(f"Seeing if {funcName} exists")
+    funcs = [method for ms in mss for method in dir(ms) if hasattr(ms,method) and callable(getattr(ms,method))]
+    funcs = list(set(funcs))
+    params = input()
+
+    if funcName in funcs:
+        for ms in mss: 
+            try:
+                func = getattr(ms, funcName)
+                func(params)
+            except:
+                continue
+    else:
+        print(f"{funcName} does not exist")
+
 # Has been removed
 # def verbosi():
 #     printBlue("Changing verbosity")
@@ -486,8 +504,11 @@ cmds = [
         {"func":powerInd,     "cmd":["powerIndication","pi"],  "info":"Set power indication."},
         {"func":ledBright,    "cmd":["LEDbrightness","LEDb"],  "info":"Set LED brightness."},
         {"func":setLEDs,      "cmd":["setLED","LED"],          "info":"Set LEDs."},
+        {"func":devSpecific,  "cmd":["devSpecific","ds"],      "info":"Device specific command."},
         # {"func":verbosi,      "cmd":["verbose", "v"],          "info":"Change verbose output."}
     ]
+
+import inspect
 
 def checkInput():
     """Check console input for stuff todo."""
@@ -497,11 +518,19 @@ def checkInput():
     print("Type 'help' to get list of available commands")
     while(running):
         # Wait for key press
-        key = input()
+        keyArgs = input().split(" ")
+        key = keyArgs[0]
+        args = []
+        if len(keyArgs) > 1: args = keyArgs[1:]
         found = False
         for cmd in cmds:
             if any(x == key for x in cmd["cmd"]):
-                cmd["func"]()
+                gA = inspect.getfullargspec(cmd["func"]).args
+                if len(gA) != len(args): 
+                    print("Function " + str(cmd["func"]) + "takes exactly " + str(len(gA)) + " arguments")
+                else:
+                    if len(gA) > 0: cmd["func"](*args)
+                    else: cmd["func"]()
                 found = True
                 break
         if not found and key != "":
@@ -565,22 +594,26 @@ if __name__ == '__main__':
         sys.exit(0)
     signal.signal(signal.SIGINT, aborted)
     
-    mss = [PowerMeter(updateInThread=False,
-                      ip=dev["ip"], port=dev["port"], useUDP=False, portUDP=5323+i, #  port=54322, stream=True,
-                      samplingRate=dev["sr"], measures="v,i".split(','),
-                      name=dev["name"],
-                      verbose=args.verbose>1)
-                      for i, dev in enumerate(deviceList)]  
+
     mss = []
     for i, dev in enumerate(deviceList):
-        if dev["type"] == SmartMeter.TYPE:
-            mss.append(SmartMeter(updateInThread=False,
-                                 ip=dev["ip"], port=dev["port"], useUDP=False, portUDP=5323+i,
-                                 samplingRate=dev["sr"], name=dev["name"], verbose=args.verbose>1))
-        else:
-            mss.append(PowerMeter(updateInThread=False,
-                                  ip=dev["ip"], port=dev["port"], useUDP=False, portUDP=5323+i,
-                                  samplingRate=dev["sr"], name=dev["name"], verbose=args.verbose>1))
+        ms = SmartDevice(updateInThread=False,
+                         ip=dev["ip"], port=dev["port"], useUDP=False, portUDP=5323+i,
+                         samplingRate=dev["sr"], name=dev["name"], verbose=args.verbose>1)
+        if dev["type"] == SmartMeter.TYPE: ms.__class__ = SmartMeter
+        elif dev["type"] == PowerMeter.TYPE: ms.__class__ = PowerMeter
+        elif dev["type"] == SmartBlueline.TYPE: ms.__class__ = SmartBlueline
+        print(dev["type"])
+        mss.append(ms)
+        # if dev["type"] == SmartMeter.TYPE:
+        #     mss.append(SmartMeter(updateInThread=False,
+        #                          ip=dev["ip"], port=dev["port"], useUDP=False, portUDP=5323+i,
+        #                          samplingRate=dev["sr"], name=dev["name"], verbose=args.verbose>1))
+                                 
+        # else:
+        #     mss.append(PowerMeter(updateInThread=False,
+        #                           ip=dev["ip"], port=dev["port"], useUDP=False, portUDP=5323+i,
+        #                           samplingRate=dev["sr"], name=dev["name"], verbose=args.verbose>1))
 
     for ms in mss:
         ms.setLogLevel(LogLevel.WARNING)
