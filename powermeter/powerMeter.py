@@ -117,9 +117,6 @@ class PowerMeter(SmartDevice):
         self.MEASUREMENTS = self.measurementInfo["keys"]
         self.MEASUREMENT_BYTES = self.measurementInfo["bytes"]
 
-    def setClassPowerMeter(self):
-        pass
-
     def defaultSettings(self):
         self.samplingRate = self.DEFAULT_SR
         self.measurementInfo = self.AVAILABLE_MEASURES[0]

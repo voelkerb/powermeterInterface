@@ -105,9 +105,6 @@ class SmartMeter(SmartDevice):
         self.MEASUREMENTS = self.measurementInfo["keys"]
         self.MEASUREMENT_BYTES = self.measurementInfo["bytes"]
 
-    def setClassSmartMeter(self):
-        pass
-
     def defaultSettings(self):
         """
         Set default values to this smartmeter.
