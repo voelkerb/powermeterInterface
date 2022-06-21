@@ -442,20 +442,53 @@ def setLEDs():
             ms.setLEDs(pattern,duration,fgColor,bgColor)
 
 def devSpecific(funcName):
-    print(f"Seeing if {funcName} exists")
-    funcs = [method for ms in mss for method in dir(ms) if hasattr(ms,method) and callable(getattr(ms,method))]
-    funcs = list(set(funcs))
-    params = input()
+    # Gett all func names
+    funcs = [method for ms in mss for method in dir(ms) if hasattr(ms, method) and callable(getattr(ms,method))]
+    # That are not private
+    funcs = [f for f in list(set(funcs)) if str(f)[0] != "_"]
+    # Return if not exist
+    if funcName not in funcs:
+        print(f"\n{funcName} does not exist, available: " + str(funcs))
+        return
+    func = None
+    for ms in mss: 
+        try:
+            func = getattr(ms, funcName)
+            break
+        except:
+            continue
+    
+    gA = inspect.getfullargspec(func)
+    args = gA.args + gA.kwonlyargs
+    args = [a for a in args if "self" != a]
 
-    if funcName in funcs:
-        for ms in mss: 
-            try:
-                func = getattr(ms, funcName)
-                func(params)
-            except:
-                continue
-    else:
-        print(f"{funcName} does not exist")
+    print(f"\n{funcName} takes args: {args}")
+    params = {a:None for a in args}
+    argsIndex = 0
+    # Get parameter 
+    print(f'\nInput parameters for function {funcName}({"".join(args)}):')
+    while argsIndex < len(args):
+        param = input(f'{args[argsIndex]}: \n\t')
+        try: 
+            param = eval(param)
+            params[args[argsIndex]] = param
+            argsIndex += 1
+            break
+        except:
+            print("Error evaluating parameter")
+    # finally execute func
+    for ms in mss: 
+        try:
+            # Indicate strings as such
+            vs = [str(v) if not isinstance(v,str) else str(f"\"{str(v)}\"") for _,v in params.items()]
+            print(f'Executing: {funcName}({",".join([str(p) + "=" + str(v) for p,v in zip(params,vs)])})\n')
+            func = getattr(ms, funcName)
+            func(**params)
+            break
+        except Exception as e:
+            print(e)
+            continue
+
 
 # Has been removed
 # def verbosi():
@@ -521,13 +554,13 @@ def checkInput():
         keyArgs = input().split(" ")
         key = keyArgs[0]
         args = []
-        if len(keyArgs) > 1: args = keyArgs[1:]
+        if len(keyArgs) > 1: args = [k for k in keyArgs[1:] if len(k) > 0]
         found = False
         for cmd in cmds:
             if any(x == key for x in cmd["cmd"]):
                 gA = inspect.getfullargspec(cmd["func"]).args
                 if len(gA) != len(args): 
-                    print("Function " + str(cmd["func"]) + "takes exactly " + str(len(gA)) + " arguments")
+                    print("Function " + str(cmd["func"].__name__) + " takes exactly " + str(len(gA)) + " arguments")
                 else:
                     if len(gA) > 0: cmd["func"](*args)
                     else: cmd["func"]()
