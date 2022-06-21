@@ -123,9 +123,6 @@ class SmartBlueline(SmartDevice):
         self.MEASUREMENTS = self.measurementInfo["keys"]
         self.MEASUREMENT_BYTES = self.measurementInfo["bytes"]
     
-    def setClassBlueline(self):
-        pass
-    
     def _handleCommand(self, cmd, di):
         super()._handleCommand(cmd, di)
         if cmd == "sample":
@@ -145,15 +142,6 @@ class SmartBlueline(SmartDevice):
         self.MEASUREMENTS = self.measurementInfo["keys"]
         self.MEASUREMENT_BYTES = self.measurementInfo["bytes"]
 
-    def resetEnergy(self):
-        """
-        Set dely reset for the device.
-        
-        :param command:   LoRaWAN AT Command
-        :type  command:   str
-        """
-        if not self.inited: self._notInitedError
-        self.sendFunc(str("{\"cmd\":\"resetEnergy\"}"))
     
     def getFrame(self, i):
         """Get a frame, max convert from raw to float"""
@@ -216,6 +204,7 @@ class SmartBlueline(SmartDevice):
         """
         if devType not in ["4T", "4P"]:
             self.msPrint("Error:Unsupported device type: " + str(devType))
+            return
 
         self.sendFunc(json.dumps({
             "cmd":"type",
