@@ -715,8 +715,8 @@ class SmartDevice(object):
         info = ""
 
         info += '\033[95m' + self.name + ":" + '\033[0m'
-        start = self.getStartTs()
-        stop = self.getStopTs()
+        start = self.caStartTs
+        stop = self.caStopTs
         if start is not None:
             info += "\n\t" + str(time_format_ymdhms(start)) + " -> "
             if stop is not None:

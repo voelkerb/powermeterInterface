@@ -35,8 +35,8 @@ class SmartBlueline(SmartDevice):
     TYPE = "Blueline".lower()
 
     DEFAULT_SR = 1000
-    BL5080_4T_LSB_TO_uVolt = 62.5
-    BL5080_4T_GAIN = 67.66
+    # BL5080_4T_LSB_TO_uVolt = 62.5
+    # BL5080_4T_GAIN = 67.66
     
     AVAILABLE_MEASURES = [
             {"keys": [f"CH{i}" for i in range(4)], "bytes": 24, "dtype":np.float32, "cmdMeasure": None}
@@ -129,7 +129,7 @@ class SmartBlueline(SmartDevice):
             #  Set start ts if in dictionary
             if "offset" in di: self.offsets = {v:d for v,d in zip(self.MEASUREMENTS, di["offset"])}
             if "scaling" in di: self.scalings = {v:d for v,d in zip(self.MEASUREMENTS, di["scaling"])}
-            if "scaling" in di: self._multiply = {v:self.BL5080_4T_LSB_TO_uVolt/self.BL5080_4T_GAIN/self.scalings[s] for v,s in zip(self.MEASUREMENTS, self.scalings)}
+            if "scaling" in di and "trans" in di: self._multiply = {v:di["trans"]/self.scalings[s] for v,s in zip(self.MEASUREMENTS, self.scalings)}
             if self.verbose: self.msPrint("New * factor: " + str(self._multiply))
             if "refTemp" in di: self.refTemp = di["refTemp"]
 
@@ -304,7 +304,9 @@ if __name__ == '__main__':
                   verbose=args.verbose, updateInThread=False, name="blueline", rawValues=args.raw,
                   samplingRate=args.samplingrate, cycleBased=args.cycleBased, simulation=args.simulation, directInit=True)
     ms.frameSize = max(1,int(ms.samplingRate/50))
-
+    if args.serial is not None: 
+        time.sleep(1)
+        ms.getType() # flushes serial
     # Catch control+c
     app = None
     running = True
@@ -382,6 +384,7 @@ if __name__ == '__main__':
                 mapping[key]["curve"] = curve
                 mapping[key]["plot"].addItem(curve)
 
+    
     # Update live plot with seconds counter
     start = 0
     end = 0
@@ -431,10 +434,8 @@ if __name__ == '__main__':
         else:
             ts = ms.getStartTs()
             if ts is None: ts = time.time()
-            filename = ms.name + "_" + time_format_ymdhms(ts).replace(".","_").replace(":","_").replace("/","_").replace(" ","__") + ".mkv"
-
+            thePath = ms.name + "_" + time_format_ymdhms(ts).replace(".","_").replace(":","_").replace("/","_").replace(" ","__") + ".mkv"
         if cycle != -1: thePath = thePath.split(".mkv")[0] + "_cycle_" + str(cycle) + ".mkv"
-        
         systemCall += thePath
         return systemCall
 
@@ -442,7 +443,7 @@ if __name__ == '__main__':
         # Embed timestamp in outputfilename
         ts = ms.getStartTs()
         if ts is None: ts = time.time()
-        filename = ms.deviceName + "_" + time_format_ymdhms(ts).replace(".","_").replace(":","_").replace("/","_").replace(" ","__") + ".csv"
+        filename = ms.deviceName + "_" + str(ms.samplingRate) + "HZ" + "_" + time_format_ymdhms(ts).replace(".","_").replace(":","_").replace("/","_").replace(" ","__") + ".csv"
         # given filename
         if args.filename is not None: filename = args.filename
         # Make sure csv format
