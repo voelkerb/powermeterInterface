@@ -20,6 +20,7 @@ import platform
 # We need to add the path
 from queue import Queue, Empty
 import json
+
 # Import top level module
 try:
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,8 +40,9 @@ class SmartBlueline(SmartDevice):
     # BL5080_4T_GAIN = 67.66
     
     AVAILABLE_MEASURES = [
-            {"keys": [f"CH{i}" for i in range(4)], "bytes": 24, "dtype":np.float32, "cmdMeasure": None}
+            {"keys": [f"CH{i}" for i in range(4)], "bytes": 24, "dtype":np.float32, "cmdMeasure": None, "units":["NA"]*4}
         ]
+    UNITS = {"T":"°C", "P":"bar"}
 
 
     # Init function with default values
@@ -99,11 +101,7 @@ class SmartBlueline(SmartDevice):
                 self.measurementInfo["keys"].append(s)
                 self.measurementInfo["cmdMeasure"].append(s)
             self.measurementInfo["bytes"] = len(self.measurementInfo["keys"])*4
-            # self.measurementInfo = None
-            # for availableMeasureSet in self.AVAILABLE_MEASURES:
-            #     if all(item in availableMeasureSet["keys"] for item in measures): 
-            #         self.measurementInfo = availableMeasureSet
-            #         break
+            self.measurementInfo["units"] = ["NA"]*len(self.measurementInfo["keys"])
             if self.measurementInfo is None: 
                 sys.exit("Blueline cannot handle mesurements: " + str(measures)) 
             else:
@@ -125,7 +123,13 @@ class SmartBlueline(SmartDevice):
     
     def _handleCommand(self, cmd, di):
         super()._handleCommand(cmd, di)
-        if cmd == "sample":
+        if cmd == "info":
+            # Store unit (up until now not send from device)
+            if "deviceType" in di:
+                if "T" in di["deviceType"]: self.measurementInfo["units"] = [self.UNITS["T"] for _ in self.measurementInfo["units"]]
+                if "P" in di["deviceType"]: self.measurementInfo["units"] = [self.UNITS["P"] for _ in self.measurementInfo["units"]]
+        # Sampling command to store raw data conversion factors 
+        elif cmd == "sample":
             #  Set start ts if in dictionary
             if "offset" in di: self.offsets = {v:d for v,d in zip(self.MEASUREMENTS, di["offset"])}
             if "scaling" in di: self.scalings = {v:d for v,d in zip(self.MEASUREMENTS, di["scaling"])}
@@ -435,7 +439,7 @@ if __name__ == '__main__':
             ts = ms.getStartTs()
             if ts is None: ts = time.time()
             thePath = ms.name + "_" + time_format_ymdhms(ts).replace(".","_").replace(":","_").replace("/","_").replace(" ","__") + ".mkv"
-        if cycle != -1: thePath = thePath.split(".mkv")[0] + "_cycle_" + str(cycle) + ".mkv"
+        if cycle != -1: thePath = thePath.split(".mkv")[0] + "_" + str(ms.samplingRate) + "_cycle_" + str(cycle) + ".mkv"
         systemCall += thePath
         return systemCall
 
@@ -448,7 +452,7 @@ if __name__ == '__main__':
         if args.filename is not None: filename = args.filename
         # Make sure csv format
         if not filename.find(".csv"): filename.split(".")[0] + ".csv"
-        if cycle != -1: filename = filename.split(".csv")[0] + "_cycle_" + str(cycle) + ".csv"
+        if cycle != -1: filename = filename.split(".csv")[0] + "_" + str(ms.samplingRate) + "_cycle_" + str(cycle) + ".csv"
         if args.verbose: print("Storing CSV data to: " + filename)
         csvFile = open(filename, 'w')
         csvWriter = csv.writer(csvFile, lineterminator='\n')
@@ -466,7 +470,7 @@ if __name__ == '__main__':
             ffmpegProc = subprocess.Popen(ffmpegCall, shell=True, stdin=subprocess.PIPE)
         if args.csv:
             csvWriter, csvFile = constructCSVWriter(ms, path=args.filename, cycle=cycles)
-            csvWriter.writerow(ms.MEASUREMENTS)
+            csvWriter.writerow([f"{m} [{u}]" for m, u in zip(ms.MEASUREMENTS, ms.measurementInfo["units"])])
             
         while running or len(ms.frames):
             # Update ms
@@ -498,6 +502,7 @@ if __name__ == '__main__':
                             csvFile.close()
                             csvWriter, csvFile = constructCSVWriter(ms, path=args.filename, cycle=cycles)
                             csvWriter.writerow(ms.MEASUREMENTS)
+                            csvWriter.writerow([f"{m} [{u}]" for m, u in zip(ms.MEASUREMENTS, ms.measurementInfo["units"])])
                         # Add none to queue to indicate cycle to plot thread
                         if plotQueue is not None: plotQueue.put(None)
 
