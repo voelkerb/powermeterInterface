@@ -126,8 +126,8 @@ class SmartBlueline(SmartDevice):
         if cmd == "info":
             # Store unit (up until now not send from device)
             if "deviceType" in di:
-                if "T" in di["deviceType"]: self.measurementInfo["units"] = [self.UNITS["T"] for _ in self.measurementInfo["units"]]
-                if "P" in di["deviceType"]: self.measurementInfo["units"] = [self.UNITS["P"] for _ in self.measurementInfo["units"]]
+                if "T" in di["deviceType"]: self.measurementInfo["units"] = [self.UNITS["T"] for _ in range(len(self.AVAILABLE_MEASURES[0]["keys"]))]
+                if "P" in di["deviceType"]: self.measurementInfo["units"] = [self.UNITS["P"] for _ in range(len(self.AVAILABLE_MEASURES[0]["keys"]))]
         # Sampling command to store raw data conversion factors 
         elif cmd == "sample":
             #  Set start ts if in dictionary
@@ -460,9 +460,10 @@ if __name__ == '__main__':
 
     cycles = -1
     csvFile = None
+    cycleCnt = 0
     # Update the measurement system
     def updateMs():
-        global ffmpegProc, running, ms, plotQueue, csvFile, cycles
+        global cycleCnt, ffmpegProc, running, ms, plotQueue, csvFile, cycles
         # Init ffmpeg
         if args.cycleBased: cycles = 0
         if args.ffmpeg:
@@ -471,7 +472,8 @@ if __name__ == '__main__':
         if args.csv:
             csvWriter, csvFile = constructCSVWriter(ms, path=args.filename, cycle=cycles)
             csvWriter.writerow([f"{m} [{u}]" for m, u in zip(ms.MEASUREMENTS, ms.measurementInfo["units"])])
-            
+        cycleCnt = 0
+
         while running or len(ms.frames):
             # Update ms
             if running: ms.update()
@@ -482,7 +484,9 @@ if __name__ == '__main__':
                 
                 cycleSplit = [frame]
                 if cycleIndex != -1:#
-                    print("Cycle in data")
+                    
+                    print(f"Cycle: {cycleCnt}")
+                    cycleCnt += 1
                     cycleSplit = [frame[:cycleIndex], frame[cycleIndex+1:]]
 
                 for i, frame in enumerate(cycleSplit):
