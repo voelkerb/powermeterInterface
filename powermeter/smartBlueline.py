@@ -471,7 +471,7 @@ if __name__ == '__main__':
             ffmpegProc = subprocess.Popen(ffmpegCall, shell=True, stdin=subprocess.PIPE)
         if args.csv:
             csvWriter, csvFile = constructCSVWriter(ms, path=args.filename, cycle=cycles)
-            csvWriter.writerow([f"{m} [{u}]" for m, u in zip(ms.MEASUREMENTS, ms.measurementInfo["units"])])
+            csvWriter.writerow([f"{m} [{u}]".encode("utf-8").decode("utf-8") for m, u in zip(ms.MEASUREMENTS, ms.measurementInfo["units"])])
         cycleCnt = 0
 
         while running or len(ms.frames):
@@ -505,8 +505,7 @@ if __name__ == '__main__':
                         if args.csv:
                             csvFile.close()
                             csvWriter, csvFile = constructCSVWriter(ms, path=args.filename, cycle=cycles)
-                            csvWriter.writerow(ms.MEASUREMENTS)
-                            csvWriter.writerow([f"{m} [{u}]" for m, u in zip(ms.MEASUREMENTS, ms.measurementInfo["units"])])
+                            csvWriter.writerow([f"{m} [{u}]".encode("utf-8").decode("utf-8") for m, u in zip(ms.MEASUREMENTS, ms.measurementInfo["units"])])
                         # Add none to queue to indicate cycle to plot thread
                         if plotQueue is not None: plotQueue.put(None)
 
