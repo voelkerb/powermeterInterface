@@ -993,7 +993,7 @@ def initParser():
                         help="Pass source email address SMTP server settings as : \"<email>:<password>:<smtpSever>:<port>\".")
     parser.add_argument("--smtp_settings_file", type=str, default="email.conf",
                         dest="smtpSettingsFile",
-                        help="Pass a config file in JSON format with \{\"address\":<mail>,\"user\":<user>,\"pwd\":<pwd>,\"smtp_server\":<server>,\"smtp_port\": <port>\}.")
+                        help="Pass a config file in JSON format with {\"address\":<mail>,\"user\":<user>,\"pwd\":<pwd>,\"smtp_server\":<server>,\"smtp_port\": <port>}.")
     parser.add_argument("--ntp_confidence", type=int, 
                         default=30,
                         dest="ntpConfidence",

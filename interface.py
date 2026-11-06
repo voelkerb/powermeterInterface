@@ -466,14 +466,13 @@ def devSpecific(funcName):
     params = {a:None for a in args}
     argsIndex = 0
     # Get parameter 
-    print(f'\nInput parameters for function {funcName}({"".join(args)}):')
+    print(f'\nInput parameters for function {funcName}({", ".join(args)}):')
     while argsIndex < len(args):
         param = input(f'{args[argsIndex]}: \n\t')
         try: 
             param = eval(param)
             params[args[argsIndex]] = param
             argsIndex += 1
-            break
         except:
             print("Error evaluating parameter")
     # finally execute func
